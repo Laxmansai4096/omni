@@ -1,0 +1,106 @@
+{
+  "summary": {
+    "total_processed": 7,
+    "avg_time_sec": 5.83,
+    "total_time_sec": 40.82
+  },
+  "results": [
+    {
+      "file_name": "1_dense_book_text_ocr.png",
+      "document_id": "doc-cf91b7e3",
+      "file_size_bytes": 30698,
+      "upload_http_status": 200,
+      "response_time_sec": 5.57,
+      "has_base64_image_url": true,
+      "total_elements": 5,
+      "category_counts": {
+        "header_footer": 2,
+        "text": 3
+      }
+    },
+    {
+      "file_name": "2_financial_table_matrix.png",
+      "document_id": "doc-385f46ed",
+      "file_size_bytes": 27642,
+      "upload_http_status": 200,
+      "response_time_sec": 5.81,
+      "has_base64_image_url": true,
+      "total_elements": 26,
+      "category_counts": {
+        "table": 1,
+        "text": 25
+      }
+    },
+    {
+      "file_name": "3_scientific_graph_chart.png",
+      "document_id": "doc-a638ad26",
+      "file_size_bytes": 20482,
+      "upload_http_status": 200,
+      "response_time_sec": 5.59,
+      "has_base64_image_url": true,
+      "total_elements": 7,
+      "category_counts": {
+        "chart": 1,
+        "header_footer": 1,
+        "text": 5
+      }
+    },
+    {
+      "file_name": "4_merchant_receipt_key_values.png",
+      "document_id": "doc-df0fb94c",
+      "file_size_bytes": 34107,
+      "upload_http_status": 200,
+      "response_time_sec": 5.49,
+      "has_base64_image_url": true,
+      "total_elements": 25,
+      "category_counts": {
+        "table": 1,
+        "text": 24
+      }
+    },
+    {
+      "file_name": "5_architecture_flowchart.png",
+      "document_id": "doc-8e968dd3",
+      "file_size_bytes": 27805,
+      "upload_http_status": 200,
+      "response_time_sec": 5.56,
+      "has_base64_image_url": true,
+      "total_elements": 13,
+      "category_counts": {
+        "chart": 1,
+        "header_footer": 1,
+        "text": 11
+      }
+    },
+    {
+      "file_name": "6_multimodal_financial_dashboard.png",
+      "document_id": "doc-29ab9d9d",
+      "file_size_bytes": 56483,
+      "upload_http_status": 200,
+      "response_time_sec": 6.0,
+      "has_base64_image_url": true,
+      "total_elements": 28,
+      "category_counts": {
+        "table": 1,
+        "chart": 1,
+        "figure": 1,
+        "header_footer": 1,
+        "text": 24
+      }
+    },
+    {
+      "file_name": "7_contoso_store_receipt.png",
+      "document_id": "doc-7ceef1f1",
+      "file_size_bytes": 1811693,
+      "upload_http_status": 200,
+      "response_time_sec": 6.8,
+      "has_base64_image_url": true,
+      "total_elements": 18,
+      "category_counts": {
+        "table": 2,
+        "chart": 1,
+        "text": 15
+      }
+    }
+  ]
+}

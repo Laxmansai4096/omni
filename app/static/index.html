@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniDoc AI Studio - Multimodal Image Intelligence</title>
+    <link rel="stylesheet" href="/static/style.css?v=12">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Top Navigation Header -->
+        <header class="navbar">
+            <div class="brand">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-brain"></i>
+                </div>
+                <div class="brand-text">
+                    <span class="brand-name">OmniDoc <span class="badge-ai">AI Studio</span></span>
+                    <span class="brand-sub">Azure AI Document Intelligence & Vision Engine</span>
+                </div>
+            </div>
+
+            <div class="nav-controls">
+                <!-- TOP AI OBSERVABILITY & TRACES BUTTON -->
+                <button class="top-observability-btn" id="topObservabilityBtn" onclick="toggleObservabilityModal()" title="View Stage-wise Microservice Traces, Latency, Tokens & Cost">
+                    <i class="fa-solid fa-gauge-high"></i>
+                    <span class="obs-title">AI Observability & Traces</span>
+                    <span class="obs-chip" id="topObsChip"><i class="fa-solid fa-microchip"></i> 4 Services | 2,490 ms</span>
+                </button>
+
+                <div class="status-indicator" id="systemStatus">
+                    <span class="status-dot online"></span>
+                    <span class="status-text">Azure AI Engine Active</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Studio Split Layout -->
+        <main class="studio-layout">
+            <!-- LEFT SIDE PANE: Upload & Image Controls -->
+            <section class="pane left-control-pane">
+                <div class="pane-header">
+                    <div class="pane-title">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> Image Upload & Controls
+                    </div>
+                </div>
+
+                <div class="pane-body scrollable">
+                    <!-- Enterprise Ingestion Mode Selector -->
+                    <div class="mode-selector">
+                        <button class="mode-btn active" id="modeSyncBtn" onclick="setIngestionMode('sync')">
+                            <i class="fa-solid fa-bolt"></i> Direct (Sync)
+                        </button>
+                        <button class="mode-btn mode-async" id="modeAsyncBtn" onclick="setIngestionMode('async')">
+                            <i class="fa-solid fa-satellite-dish"></i> Service Bus (Async)
+                        </button>
+                    </div>
+                    <span class="mode-badge-hint" id="modeHintText">Direct mode: Instant interactive analysis for single pages</span>
+
+                    <!-- Real-time Service Bus Async Progress Banner -->
+                    <div class="async-progress-banner" id="asyncProgressBanner" style="display: none;">
+                        <div class="async-banner-header">
+                            <span class="async-banner-title"><i class="fa-solid fa-circle-notch fa-spin"></i> <span id="asyncStageLabel">Enqueued in Service Bus</span></span>
+                            <span class="async-job-badge" id="asyncJobBadge">job-id</span>
+                        </div>
+                        <div class="progress-bar-fde-track">
+                            <div class="progress-bar-fde-fill" id="asyncProgressBar"></div>
+                        </div>
+                        <div class="async-stages-stepper">
+                            <div class="stage-step active" id="step-queued">
+                                <div class="step-icon-circle"><i class="fa-solid fa-inbox"></i></div>
+                                <span class="step-label">Queued</span>
+                            </div>
+                            <div class="stage-step" id="step-storage">
+                                <div class="step-icon-circle"><i class="fa-solid fa-cloud"></i></div>
+                                <span class="step-label">Blob</span>
+                            </div>
+                            <div class="stage-step" id="step-ocr">
+                                <div class="step-icon-circle"><i class="fa-solid fa-file-lines"></i></div>
+                                <span class="step-label">DocIntel</span>
+                            </div>
+                            <div class="stage-step" id="step-vision">
+                                <div class="step-icon-circle"><i class="fa-solid fa-brain"></i></div>
+                                <span class="step-label">Vision</span>
+                            </div>
+                            <div class="stage-step" id="step-done">
+                                <div class="step-icon-circle"><i class="fa-solid fa-check"></i></div>
+                                <span class="step-label">Done</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Drop Zone -->
+                    <div class="upload-dropzone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                        <i class="fa-solid fa-file-image drop-icon"></i>
+                        <p class="drop-title">Select or Drag & Drop Image</p>
+                        <p class="drop-sub">PNG, JPG, WEBP, TIFF, BMP, PDF (Up to 20MB)</p>
+                        <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.webp,.bmp,.tiff,.pdf" style="display:none;" onchange="handleFileSelected(this.files[0])">
+                    </div>
+
+                    <!-- Selected File Status Card -->
+                    <div class="selected-file-card" id="fileStatusCard" style="display: none;">
+                        <div class="file-info-header">
+                            <i class="fa-solid fa-image file-icon"></i>
+                            <div class="file-details">
+                                <span class="file-name-text" id="selectedFileName">sample.png</span>
+                                <span class="file-size-text" id="selectedFileSize">0 KB</span>
+                            </div>
+                            <button class="btn-icon" onclick="clearSelectedFile()" title="Remove file"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- Process Action Button -->
+                    <button class="btn btn-process" id="processBtn" onclick="startProcessing()" disabled>
+                        <i class="fa-solid fa-bolt"></i> PROCESS IMAGE
+                    </button>
+
+                    <div class="divider"><span>PRESETS & HISTORY</span></div>
+
+                    <!-- Preset Sample Selector -->
+                    <div class="input-group">
+                        <label for="sampleSelect"><i class="fa-solid fa-folder-open"></i> Preset Test Image:</label>
+                        <select id="sampleSelect" class="form-select" onchange="loadSampleDocument(this.value)">
+                            <option value="sample-expense-001">Expense & Travel Receipt (Tables, KV, Charts)</option>
+                            <option value="sample-financial-002">Financial Forecast Report (Bar Charts, Diagram)</option>
+                        </select>
+                    </div>
+
+                    <!-- SQLite DB History Selector for Stored Uploaded Docs -->
+                    <div class="input-group">
+                        <label for="historySelect"><i class="fa-solid fa-database"></i> SQLite Stored Document History:</label>
+                        <select id="historySelect" class="form-select" onchange="loadSampleDocument(this.value)">
+                            <option value="">-- Previously Processed Docs --</option>
+                        </select>
+                    </div>
+
+                    <!-- URL Processing Form -->
+                    <div class="input-group">
+                        <label for="urlInput"><i class="fa-solid fa-link"></i> Analyze from Image URL:</label>
+                        <div class="input-with-btn">
+                            <input type="url" id="urlInput" placeholder="https://example.com/chart.png" class="form-input">
+                            <button class="btn btn-secondary" onclick="submitUrlDocument()">Analyze URL</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CENTER COLUMN: Interactive Requirement Workspace & Canvas Viewport -->
+            <section class="pane center-canvas-pane">
+                <!-- TOP WORKSPACE FILTER TOOLBAR (Requirement Selector) -->
+                <div class="workspace-toolbar">
+                    <span class="toolbar-label"><i class="fa-solid fa-filter"></i> Requirement:</span>
+                    <div class="filter-pills">
+                        <button class="pill active" data-category="all" onclick="setCategoryFilter('all')">
+                            <i class="fa-solid fa-layer-group"></i> All <span class="pill-count" id="count-all">0</span>
+                        </button>
+                        <button class="pill pill-text" data-category="text" onclick="setCategoryFilter('text')">
+                            <i class="fa-solid fa-font"></i> Text (Yellow) <span class="pill-count" id="count-text">0</span>
+                        </button>
+                        <button class="pill pill-table" data-category="table" onclick="setCategoryFilter('table')">
+                            <i class="fa-solid fa-table"></i> Tables (Blue) <span class="pill-count" id="count-table">0</span>
+                        </button>
+                        <button class="pill pill-chart" data-category="chart" onclick="setCategoryFilter('chart')">
+                            <i class="fa-solid fa-chart-column"></i> Charts (Green) <span class="pill-count" id="count-chart">0</span>
+                        </button>
+                        <button class="pill pill-figure" data-category="figure" onclick="setCategoryFilter('figure')">
+                            <i class="fa-solid fa-image"></i> Figures (Purple) <span class="pill-count" id="count-figure">0</span>
+                        </button>
+                        <button class="pill pill-kv" data-category="key_value" onclick="setCategoryFilter('key_value')">
+                            <i class="fa-solid fa-key"></i> Key-Values (Orange) <span class="pill-count" id="count-kv">0</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- MAIN WORKSPACE CANVAS VIEWPORT -->
+                <div class="workspace-viewport" id="canvasViewport">
+                    <div class="canvas-header">
+                        <div class="title-with-filename">
+                            <span class="workspace-title"><i class="fa-solid fa-eye"></i> Source Image:</span>
+                            <span class="file-tag" id="currentFileName">sample.png</span>
+                        </div>
+                        <div class="canvas-actions">
+                            <span class="badge" id="pageIndicator">Page 1 of 1</span>
+                            <span class="badge" id="zoomLevelBadge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">Fit</span>
+                            <button class="btn-sm btn-secondary" onclick="fitImageToViewport(true)" title="Fit Image to Viewport Window"><i class="fa-solid fa-compress"></i> Fit Page</button>
+                            <button class="btn-sm btn-secondary" onclick="zoomCanvas(0.15)" title="Zoom In"><i class="fa-solid fa-magnifying-glass-plus"></i> +</button>
+                            <button class="btn-sm btn-secondary" onclick="zoomCanvas(-0.15)" title="Zoom Out"><i class="fa-solid fa-magnifying-glass-minus"></i> -</button>
+                            <button class="btn-sm btn-secondary" onclick="resetZoom()" title="Reset to 100% Actual Size"><i class="fa-solid fa-expand"></i> 100%</button>
+                        </div>
+                    </div>
+
+                    <div class="canvas-wrapper" id="canvasWrapper">
+                        <div class="image-stage-container" id="imageStageContainer">
+                            <canvas id="documentCanvas"></canvas>
+                            <svg class="bounding-overlay" id="boundingOverlay"></svg>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RIGHT COLUMN: Full-Height Extracted Data & AI Observability Inspector -->
+            <section class="pane right-inspector-pane">
+                <div class="inspector-header">
+                    <div class="inspector-title-row">
+                        <span class="inspector-title"><i class="fa-solid fa-diagram-project"></i> Extracted Intelligence</span>
+                        <button class="btn btn-secondary btn-sm" onclick="exportData('csv')"><i class="fa-solid fa-file-csv"></i> CSV</button>
+                    </div>
+                    <span class="inspector-sub" id="inspectorSubText">Select an item below to highlight in RED on the image</span>
+                    <div class="inspector-tabs">
+                        <button class="tab-btn active" onclick="switchInspectorTab('extracted')"><i class="fa-solid fa-list-check"></i> Extracted Items</button>
+                        <button class="tab-btn" onclick="switchInspectorTab('json')"><i class="fa-solid fa-code"></i> JSON Data</button>
+                    </div>
+                </div>
+
+                <div class="inspector-content scrollable">
+                    <div class="tab-panel active" id="panel-extracted">
+                        <div class="elements-list" id="elementsList">
+                            <!-- Extracted item cards dynamically rendered here -->
+                        </div>
+                    </div>
+                    <div class="tab-panel" id="panel-json">
+                        <pre class="json-viewer" id="jsonViewer"><code>Loading document JSON output...</code></pre>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- AI Observability & Traces Modal Dialog -->
+    <div class="modal-backdrop" id="observabilityModal" style="display: none;" onclick="if(event.target === this) toggleObservabilityModal()">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <div class="modal-icon"><i class="fa-solid fa-gauge-high"></i></div>
+                    <div>
+                        <h3 class="modal-title">Azure AI Observability & Microservices Telemetry</h3>
+                        <p class="modal-sub">End-to-end Stage-Wise Microservices Call Chain, Latency, Tokens & Cost Analysis</p>
+                    </div>
+                </div>
+                <button class="btn-icon modal-close-btn" onclick="toggleObservabilityModal()" title="Close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body scrollable">
+                <div class="observability-container" id="observabilityContainerModal">
+                    <!-- Live Microservices execution timeline, latency, token usage, cost calculator -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=12"></script>
+</body>
+</html>

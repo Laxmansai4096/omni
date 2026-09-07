@@ -1,0 +1,224 @@
+[
+  {
+    "usecase_num": 1,
+    "usecase_name": "Dense Book Text Page OCR & Reading Order Extraction",
+    "document_id": "doc-4b9099ff",
+    "execution_time_sec": 9.43,
+    "http_upload_status": 200,
+    "canvas_image_url_ready": true,
+    "total_elements_extracted": 5,
+    "category_breakdown": {
+      "header_footer": 2,
+      "text": 3
+    },
+    "csv_export_status": "N/A",
+    "extracted_element_samples": [
+      {
+        "id": "text-1",
+        "category": "header_footer",
+        "label": "Text Block #1",
+        "confidence": "99%",
+        "text_preview": "SECTION 3.2: NEURAL LAYOUT GRAPH RECONSTRUCTION IN MULTIMODAL OCR"
+      },
+      {
+        "id": "text-2",
+        "category": "text",
+        "label": "Text Block #2",
+        "confidence": "99%",
+        "text_preview": "Document intelligence architectures process visual artifacts by transf"
+      },
+      {
+        "id": "text-3",
+        "category": "text",
+        "label": "Text Block #3",
+        "confidence": "99%",
+        "text_preview": "In dense academic typography, text density often exceeds 400 words per"
+      },
+      {
+        "id": "text-4",
+        "category": "text",
+        "label": "Text Block #4",
+        "confidence": "99%",
+        "text_preview": "By evaluating topological graph distance between neighboring text toke"
+      }
+    ]
+  },
+  {
+    "usecase_num": 2,
+    "usecase_name": "Financial Table Matrix & Balance Sheet Extraction",
+    "document_id": "doc-6db04da5",
+    "execution_time_sec": 6.0,
+    "http_upload_status": 200,
+    "canvas_image_url_ready": true,
+    "total_elements_extracted": 26,
+    "category_breakdown": {
+      "table": 1,
+      "text": 25
+    },
+    "csv_export_status": "HTTP 200 (525 bytes)",
+    "extracted_element_samples": [
+      {
+        "id": "table-1",
+        "category": "table",
+        "label": "Table #1 (7x6)",
+        "confidence": "98%",
+        "text_preview": "Extracted Table with 7 rows and 6 columns."
+      },
+      {
+        "id": "text-1",
+        "category": "text",
+        "label": "Text Block #1",
+        "confidence": "99%",
+        "text_preview": "GLOBAL ENTERPRISE CONSOLIDATED BALANCE SHEET (Q1-Q4)"
+      },
+      {
+        "id": "text-2",
+        "category": "text",
+        "label": "Text Block #2",
+        "confidence": "99%",
+        "text_preview": "Metric Segment"
+      },
+      {
+        "id": "text-3",
+        "category": "text",
+        "label": "Text Block #3",
+        "confidence": "99%",
+        "text_preview": "Q1 Actual"
+      }
+    ]
+  },
+  {
+    "usecase_num": 3,
+    "usecase_name": "Scientific Chart & Graph Visual Region Analysis",
+    "document_id": "doc-95804e4f",
+    "execution_time_sec": 5.56,
+    "http_upload_status": 200,
+    "canvas_image_url_ready": true,
+    "total_elements_extracted": 7,
+    "category_breakdown": {
+      "chart": 1,
+      "header_footer": 1,
+      "text": 5
+    },
+    "csv_export_status": "N/A",
+    "extracted_element_samples": [
+      {
+        "id": "fig-1",
+        "category": "chart",
+        "label": "Figure/Chart #1",
+        "confidence": "95%",
+        "text_preview": "Extracted visual element / figure layout region #1."
+      },
+      {
+        "id": "text-1",
+        "category": "header_footer",
+        "label": "Text Block #1",
+        "confidence": "99%",
+        "text_preview": "BENCHMARK PERFORMANCE COMPARISON: ACCURACY VS LATENCY"
+      },
+      {
+        "id": "text-2",
+        "category": "text",
+        "label": "Text Block #2",
+        "confidence": "99%",
+        "text_preview": "Latency vs Accuracy Trade-off Across Model Sizes Accuracy Score (%)"
+      },
+      {
+        "id": "text-3",
+        "category": "text",
+        "label": "Text Block #3",
+        "confidence": "99%",
+        "text_preview": "Batch Size"
+      }
+    ]
+  },
+  {
+    "usecase_num": 4,
+    "usecase_name": "Commercial Form & Merchant Receipt Key-Value Extraction",
+    "document_id": "doc-249d4df4",
+    "execution_time_sec": 5.74,
+    "http_upload_status": 200,
+    "canvas_image_url_ready": true,
+    "total_elements_extracted": 25,
+    "category_breakdown": {
+      "table": 1,
+      "text": 24
+    },
+    "csv_export_status": "HTTP 200 (442 bytes)",
+    "extracted_element_samples": [
+      {
+        "id": "table-1",
+        "category": "table",
+        "label": "Table #1 (10x2)",
+        "confidence": "98%",
+        "text_preview": "Extracted Table with 10 rows and 2 columns."
+      },
+      {
+        "id": "text-1",
+        "category": "text",
+        "label": "Text Block #1",
+        "confidence": "99%",
+        "text_preview": "COMMERCIAL SERVICE ORDER & RECEIPT FORM"
+      },
+      {
+        "id": "text-2",
+        "category": "text",
+        "label": "Text Block #2",
+        "confidence": "99%",
+        "text_preview": "Receipt Number:"
+      },
+      {
+        "id": "text-3",
+        "category": "text",
+        "label": "Text Block #3",
+        "confidence": "99%",
+        "text_preview": "REC-2026-99182"
+      }
+    ]
+  },
+  {
+    "usecase_num": 5,
+    "usecase_name": "Technical Architecture Flowchart & Diagram Node Analysis",
+    "document_id": "doc-e60f7196",
+    "execution_time_sec": 5.56,
+    "http_upload_status": 200,
+    "canvas_image_url_ready": true,
+    "total_elements_extracted": 13,
+    "category_breakdown": {
+      "chart": 1,
+      "header_footer": 1,
+      "text": 11
+    },
+    "csv_export_status": "N/A",
+    "extracted_element_samples": [
+      {
+        "id": "fig-1",
+        "category": "chart",
+        "label": "Figure/Chart #1",
+        "confidence": "95%",
+        "text_preview": "Extracted visual element / figure layout region #1."
+      },
+      {
+        "id": "text-1",
+        "category": "header_footer",
+        "label": "Text Block #1",
+        "confidence": "99%",
+        "text_preview": "AZURE MULTIMODAL AI SYSTEM ARCHITECTURE FLOWCHART"
+      },
+      {
+        "id": "text-2",
+        "category": "text",
+        "label": "Text Block #2",
+        "confidence": "99%",
+        "text_preview": "1. Image Input Source"
+      },
+      {
+        "id": "text-3",
+        "category": "text",
+        "label": "Text Block #3",
+        "confidence": "99%",
+        "text_preview": "2. Preprocessing Engine"
+      }
+    ]
+  }
+]

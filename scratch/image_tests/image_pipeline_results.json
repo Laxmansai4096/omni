@@ -1,0 +1,39 @@
+[
+  {
+    "name": "Book Text Photo Image",
+    "path": "scratch/image_tests/book_text_page.png",
+    "duration_sec": 5.84,
+    "elements": 5,
+    "has_image_url": true,
+    "categories": {
+      "header_footer": 1,
+      "text": 4
+    }
+  },
+  {
+    "name": "Graph & Dashboard Chart Image",
+    "path": "scratch/test_assets/financial_chart_dashboard.png",
+    "duration_sec": 6.14,
+    "elements": 28,
+    "has_image_url": true,
+    "categories": {
+      "table": 1,
+      "chart": 1,
+      "figure": 1,
+      "header_footer": 1,
+      "text": 24
+    }
+  },
+  {
+    "name": "Merchant Receipt Image",
+    "path": "scratch/test_results/doc2_contoso_receipt_contoso-receipt.png",
+    "duration_sec": 6.79,
+    "elements": 18,
+    "has_image_url": true,
+    "categories": {
+      "table": 2,
+      "chart": 1,
+      "text": 15
+    }
+  }
+]

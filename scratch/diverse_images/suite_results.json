@@ -1,0 +1,113 @@
+[
+  {
+    "doc_id": "img1_book_page",
+    "title": "Dense Book Text & Academic Article Photo",
+    "filename": "1_book_page.png",
+    "file_size_bytes": 30698,
+    "api_http_status": 200,
+    "processing_time_sec": 5.85,
+    "base64_image_url_generated": true,
+    "total_elements": 5,
+    "category_counts": {
+      "header_footer": 2,
+      "text": 3
+    },
+    "tables_count": 0,
+    "table_details": [],
+    "key_values_count": 0,
+    "key_value_samples": [],
+    "figures_count": 0
+  },
+  {
+    "doc_id": "img2_financial_table",
+    "title": "Financial Balance Sheet Matrix Table Image",
+    "filename": "2_financial_table.png",
+    "file_size_bytes": 27642,
+    "api_http_status": 200,
+    "processing_time_sec": 5.79,
+    "base64_image_url_generated": true,
+    "total_elements": 26,
+    "category_counts": {
+      "table": 1,
+      "text": 25
+    },
+    "tables_count": 1,
+    "table_details": [
+      {
+        "id": "table-1",
+        "rows": 7,
+        "cols": 6,
+        "markdown_snippet": "| Metric Segment | Q1 Actual | Q2 Actual | Q3 Forecast | Q4 Target | YoY Variance |\n| --- | --- | --- | --- | --- | --- "
+      }
+    ],
+    "key_values_count": 0,
+    "key_value_samples": [],
+    "figures_count": 0
+  },
+  {
+    "doc_id": "img3_scientific_graph",
+    "title": "Scientific Accuracy vs Latency Trend Graph Image",
+    "filename": "3_scientific_graph.png",
+    "file_size_bytes": 20482,
+    "api_http_status": 200,
+    "processing_time_sec": 8.17,
+    "base64_image_url_generated": true,
+    "total_elements": 7,
+    "category_counts": {
+      "chart": 1,
+      "header_footer": 1,
+      "text": 5
+    },
+    "tables_count": 0,
+    "table_details": [],
+    "key_values_count": 0,
+    "key_value_samples": [],
+    "figures_count": 1
+  },
+  {
+    "doc_id": "img4_receipt_form",
+    "title": "Service Order Receipt & Key-Value Photo Form",
+    "filename": "4_receipt_form.png",
+    "file_size_bytes": 34107,
+    "api_http_status": 200,
+    "processing_time_sec": 5.58,
+    "base64_image_url_generated": true,
+    "total_elements": 25,
+    "category_counts": {
+      "table": 1,
+      "text": 24
+    },
+    "tables_count": 1,
+    "table_details": [
+      {
+        "id": "table-1",
+        "rows": 10,
+        "cols": 2,
+        "markdown_snippet": "| Receipt Number: | REC-2026-99182 |\n| --- | --- |\n| Transaction Date: | September 07, 2026 |\n| Customer Name: | Acme En"
+      }
+    ],
+    "key_values_count": 0,
+    "key_value_samples": [],
+    "figures_count": 0
+  },
+  {
+    "doc_id": "img5_architecture_flowchart",
+    "title": "Technical Azure Multimodal Architecture Flowchart Image",
+    "filename": "5_architecture_flowchart.png",
+    "file_size_bytes": 27805,
+    "api_http_status": 200,
+    "processing_time_sec": 5.5,
+    "base64_image_url_generated": true,
+    "total_elements": 13,
+    "category_counts": {
+      "chart": 1,
+      "header_footer": 1,
+      "text": 11
+    },
+    "tables_count": 0,
+    "table_details": [],
+    "key_values_count": 0,
+    "key_value_samples": [],
+    "figures_count": 1
+  }
+]

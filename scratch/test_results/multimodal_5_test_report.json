@@ -1,0 +1,266 @@
+[
+  {
+    "doc_id": "doc1_azure_invoice",
+    "title": "Azure Standard Invoice PDF (Tables + Billing Key-Values)",
+    "filename": "Invoice_1.pdf",
+    "size_bytes": 147362,
+    "api_upload_status": 200,
+    "processing_time_sec": 7.3,
+    "total_pages": 1,
+    "total_elements": 19,
+    "category_counts": {
+      "table": 1,
+      "text": 18
+    },
+    "tables_found": 1,
+    "table_details": [
+      {
+        "id": "table-1",
+        "label": "Table #1 (2x5)",
+        "rows": 2,
+        "cols": 5,
+        "markdown_preview": "| Invoice Number | Invoice Date | Invoice Due Date | Charges | VAT ID |\n| --- | --- | --- | --- | --..."
+      }
+    ],
+    "key_values_found": 0,
+    "kv_sample": [],
+    "figures_found": 0,
+    "figure_details": [],
+    "text_sample": [
+      "Contoso",
+      "Address:",
+      "1 Redmond way Suite"
+    ]
+  },
+  {
+    "doc_id": "doc2_contoso_receipt",
+    "title": "Contoso Merchant Receipt Image (Itemized Charges + Dates + Tax KV)",
+    "filename": "contoso-receipt.png",
+    "size_bytes": 1811693,
+    "api_upload_status": 200,
+    "processing_time_sec": 8.05,
+    "total_pages": 1,
+    "total_elements": 18,
+    "category_counts": {
+      "table": 2,
+      "chart": 1,
+      "text": 15
+    },
+    "tables_found": 2,
+    "table_details": [
+      {
+        "id": "table-1",
+        "label": "Table #1 (2x2)",
+        "rows": 2,
+        "cols": 2,
+        "markdown_preview": "| 8GB RAM (Black) | 999.00 |\n| --- | --- |\n| 1 SurfacePen | $ 99.99 |..."
+      },
+      {
+        "id": "table-2",
+        "label": "Table #2 (3x2)",
+        "rows": 3,
+        "cols": 2,
+        "markdown_preview": "| Sub-Total | $ 1098.99 |\n| --- | --- |\n| Tax | $ 104.40 |\n| Tatal | $ 1203.39 |..."
+      }
+    ],
+    "key_values_found": 0,
+    "kv_sample": [],
+    "figures_found": 1,
+    "figure_details": [
+      {
+        "id": "fig-1",
+        "category": "chart",
+        "label": "Figure/Chart #1",
+        "bbox": {
+          "x": 0.2275,
+          "y": 0.076,
+          "width": 0.3963,
+          "height": 0.072,
+          "polygon": [
+            0.2275,
+            0.0763,
+            0.6238,
+            0.076,
+            0.6232,
+            0.148,
+            0.2275,
+            0.148
+          ]
+        }
+      }
+    ],
+    "text_sample": [
+      "Contoso",
+      "Contoso 123 Main Street Redmond, WA 98052",
+      "123-456-7890"
+    ]
+  },
+  {
+    "doc_id": "doc3_layout_multi_column",
+    "title": "Multi-Column Layout PDF (Complex Form + Multi-tables + Selection Marks)",
+    "filename": "sample-layout.pdf",
+    "size_bytes": 212406,
+    "api_upload_status": 200,
+    "processing_time_sec": 12.39,
+    "total_pages": 1,
+    "total_elements": 27,
+    "category_counts": {
+      "table": 2,
+      "header_footer": 2,
+      "text": 23
+    },
+    "tables_found": 2,
+    "table_details": [
+      {
+        "id": "table-1",
+        "label": "Table #1 (5x3)",
+        "rows": 5,
+        "cols": 3,
+        "markdown_preview": "| Title of each class | Trading Symbol | Name of exchange on which registered |\n| --- | --- | --- |\n..."
+      },
+      {
+        "id": "table-2",
+        "label": "Table #2 (2x2)",
+        "rows": 2,
+        "cols": 2,
+        "markdown_preview": "| Class | Outstanding as of April 24, 2020 |\n| --- | --- |\n| Common Stock, $0.00000625 par value per..."
+      }
+    ],
+    "key_values_found": 0,
+    "kv_sample": [],
+    "figures_found": 0,
+    "figure_details": [],
+    "text_sample": [
+      "\u2610 \u2612 :selected: QUARTERLY REPORT PURSUANT TO SECTION 13 OR 15(d) OF THE SECURITIE",
+      "Commission File Number 001-37845",
+      "MICROSOFT CORPORATION"
+    ]
+  },
+  {
+    "doc_id": "doc4_sample_invoice_tables",
+    "title": "Sample Enterprise Invoice PDF (Itemized Table + Total Balances)",
+    "filename": "sample-invoice.pdf",
+    "size_bytes": 104430,
+    "api_upload_status": 200,
+    "processing_time_sec": 5.98,
+    "total_pages": 1,
+    "total_elements": 28,
+    "category_counts": {
+      "table": 3,
+      "text": 24,
+      "header_footer": 1
+    },
+    "tables_found": 3,
+    "table_details": [
+      {
+        "id": "table-1",
+        "label": "Table #1 (2x6)",
+        "rows": 2,
+        "cols": 6,
+        "markdown_preview": "| SALESPERSON | P.O. NUMBER | REQUISITIONER | SHIPPED VIA | F.O.B. POINT | TERMS |\n| --- | --- | ---..."
+      },
+      {
+        "id": "table-2",
+        "label": "Table #2 (3x4)",
+        "rows": 3,
+        "cols": 4,
+        "markdown_preview": "| QUANTITY | DESCRIPTION | UNIT PRICE | TOTAL |\n| --- | --- | --- | --- |\n| 1 | Test for 23 fields |..."
+      },
+      {
+        "id": "table-3",
+        "label": "Table #3 (5x2)",
+        "rows": 5,
+        "cols": 2,
+        "markdown_preview": "| SUBTOTAL | $100.00 |\n| --- | --- |\n| SALES TAX | $10.00 |\n| TOTAL | $110.00 |\n| PREVIOUS BALANCE |..."
+      }
+    ],
+    "key_values_found": 0,
+    "kv_sample": [],
+    "figures_found": 0,
+    "figure_details": [],
+    "text_sample": [
+      "CONTOSO LTD.",
+      "Contoso Headquarters 123 456th St New York, NY, 10001",
+      "INVOICE: INV-100"
+    ]
+  },
+  {
+    "doc_id": "doc5_financial_chart_dashboard",
+    "title": "Multimodal Financial Dashboard PNG (Bar Chart + Pie Chart + Table + Key-Values)",
+    "filename": "financial_chart_dashboard.png",
+    "size_bytes": 56483,
+    "api_upload_status": 200,
+    "processing_time_sec": 9.62,
+    "total_pages": 1,
+    "total_elements": 28,
+    "category_counts": {
+      "table": 1,
+      "chart": 1,
+      "figure": 1,
+      "header_footer": 1,
+      "text": 24
+    },
+    "tables_found": 1,
+    "table_details": [
+      {
+        "id": "table-1",
+        "label": "Table #1 (5x5)",
+        "rows": 5,
+        "cols": 5,
+        "markdown_preview": "| Quarter | Revenue ($M) | Costs ($M) | Gross Profit ($M) | Margin (%) |\n| --- | --- | --- | --- | -..."
+      }
+    ],
+    "key_values_found": 0,
+    "kv_sample": [],
+    "figures_found": 2,
+    "figure_details": [
+      {
+        "id": "fig-1",
+        "category": "chart",
+        "label": "Figure/Chart #1",
+        "bbox": {
+          "x": 0.0342,
+          "y": 0.1119,
+          "width": 0.45,
+          "height": 0.2125,
+          "polygon": [
+            0.0342,
+            0.1119,
+            0.4842,
+            0.1119,
+            0.4833,
+            0.3244,
+            0.0342,
+            0.3244
+          ]
+        }
+      },
+      {
+        "id": "fig-2",
+        "category": "figure",
+        "label": "Figure/Chart #2",
+        "bbox": {
+          "x": 0.515,
+          "y": 0.1119,
+          "width": 0.4525,
+          "height": 0.2125,
+          "polygon": [
+            0.515,
+            0.1119,
+            0.9675,
+            0.1119,
+            0.9675,
+            0.3244,
+            0.515,
+            0.3244
+          ]
+        }
+      }
+    ],
+    "text_sample": [
+      "Report Date: October 24, 2025 | Prepared By. Enterprise Analytics Group Executiv",
+      "Quarterly Financial Growth 2025 (Revenue vs Costs)",
+      "Q1"
+    ]
+  }
+]
