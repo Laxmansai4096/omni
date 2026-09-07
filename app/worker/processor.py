@@ -58,17 +58,21 @@ class DocumentQueueWorker:
 
                 with receiver:
                     logger.info("[Worker] Listening for incoming messages on 'ai-jobs-queue'...")
-                    for msg in receiver:
-                        if not self._running:
-                            break
-                        try:
-                            self.process_message(msg, receiver)
-                        except Exception as e:
-                            logger.error(f"[Worker] Unhandled error processing message: {e}")
+                    while self._running:
+                        messages = receiver.receive_messages(max_message_count=1, max_wait_time=5)
+                        if not messages:
+                            continue
+                        for msg in messages:
+                            if not self._running:
+                                break
                             try:
-                                receiver.abandon_message(msg)
-                            except Exception:
-                                pass
+                                self.process_message(msg, receiver)
+                            except Exception as e:
+                                logger.error(f"[Worker] Unhandled error processing message: {e}")
+                                try:
+                                    receiver.abandon_message(msg)
+                                except Exception:
+                                    pass
             except Exception as e:
                 logger.error(f"[Worker] Queue consumer loop encountered error: {e}. Retrying in 5 seconds...")
                 time.sleep(5)
