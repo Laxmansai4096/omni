@@ -193,8 +193,13 @@ class AzureDocIntelService:
                 poly = fig.bounding_regions[0].polygon if fig.bounding_regions else [0, 0, pw, 0, pw, ph, 0, ph]
                 bbox = self._normalize_polygon(poly, pw, ph)
 
+                # Extract caption text safely
+                caption_text = ""
+                if hasattr(fig, "caption") and fig.caption:
+                    caption_text = getattr(fig.caption, "content", str(fig.caption))
+
                 # Classify as chart or figure based on content
-                cat = ElementCategory.CHART if "chart" in (fig.caption or "").lower() or idx % 2 == 0 else ElementCategory.FIGURE
+                cat = ElementCategory.CHART if "chart" in caption_text.lower() or idx % 2 == 0 else ElementCategory.FIGURE
                 cat_str = cat.value
                 category_counts[cat_str] = category_counts.get(cat_str, 0) + 1
 
@@ -205,9 +210,9 @@ class AzureDocIntelService:
                     label=f"Figure/Chart #{idx+1}",
                     confidence=0.95,
                     bounding_box=bbox,
-                    text_content=fig.caption or f"Extracted visual element / figure layout region #{idx+1}.",
+                    text_content=caption_text or f"Extracted visual element / figure layout region #{idx+1}.",
                     chart_summary={
-                        "title": fig.caption or f"Chart Element #{idx+1}",
+                        "title": caption_text or f"Chart Element #{idx+1}",
                         "type": "Visual Diagram / Graph",
                         "note": "Extracted via Azure AI Document Intelligence Layout Engine"
                     }

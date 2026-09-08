@@ -45,10 +45,18 @@ class AzureVisionAnalyzer:
                         ]
                     }
                 ],
-                max_tokens=800,
-                temperature=0.2
+                max_completion_tokens=800
             )
-            return {"analysis": response.choices[0].message.content}
+            usage = getattr(response, "usage", None)
+            usage_dict = {
+                "prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
+                "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
+                "total_tokens": getattr(usage, "total_tokens", 0) if usage else 0
+            }
+            return {
+                "analysis": response.choices[0].message.content,
+                "usage": usage_dict
+            }
         except Exception as e:
             logger.error(f"Error calling Azure OpenAI Vision API: {e}")
             return {"error": str(e), "note": "Vision API fallback mode"}
