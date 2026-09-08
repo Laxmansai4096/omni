@@ -2,9 +2,15 @@ let currentDocumentData = null;
 let currentPageIndex = 0;
 let currentFilter = 'all';
 let zoomScale = 1.0;
-let userZoomLocked = false; // Persistent Zoom Flag requested by user: until changed, stays locked!
+let userZoomLocked = false;
 let activeElementId = null;
 let pendingSelectedFile = null;
+
+// Interactive Pan Mode State
+let isPanToolActive = false;
+let isMouseDownPan = false;
+let panStartX = 0, panStartY = 0;
+let panStartScrollLeft = 0, panStartScrollTop = 0;
 
 // Initialize Studio on DOM Load
 document.addEventListener("DOMContentLoaded", () => {
@@ -15,14 +21,52 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!userZoomLocked && zoomScale <= 1.0) fitImageToViewport(false);
     });
 
+    // Keyboard Shortcuts (ESC to close modal or exit pan/fullscreen)
+    window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            const pane = document.getElementById("canvasViewport");
+            if (pane && pane.classList.contains("fullscreen-pane")) {
+                toggleFullscreenCanvas();
+            } else if (activeElementId !== null) {
+                selectElement(null);
+            }
+        }
+    });
+
     const wrapper = document.getElementById("canvasWrapper");
     if (wrapper) {
+        // Pan Mode Mouse Drag Handling
+        wrapper.addEventListener("mousedown", (e) => {
+            if (isPanToolActive || e.button === 1) { // Left click in Pan Mode or Middle Click
+                isMouseDownPan = true;
+                panStartX = e.clientX;
+                panStartY = e.clientY;
+                panStartScrollLeft = wrapper.scrollLeft;
+                panStartScrollTop = wrapper.scrollTop;
+                e.preventDefault();
+            }
+        });
+
+        window.addEventListener("mousemove", (e) => {
+            if (isMouseDownPan && wrapper) {
+                const dx = e.clientX - panStartX;
+                const dy = e.clientY - panStartY;
+                wrapper.scrollLeft = panStartScrollLeft - dx;
+                wrapper.scrollTop = panStartScrollTop - dy;
+            }
+        });
+
+        window.addEventListener("mouseup", () => {
+            isMouseDownPan = false;
+        });
+
+        // Mouse Wheel Pointer-Centered Zooming
         wrapper.addEventListener("wheel", (e) => {
-            if (e.ctrlKey) {
+            if (e.ctrlKey || isPanToolActive) {
                 e.preventDefault();
                 userZoomLocked = true;
-                const delta = e.deltaY < 0 ? 0.1 : -0.1;
-                zoomCanvas(delta);
+                const delta = e.deltaY < 0 ? 0.15 : -0.15;
+                zoomCanvas(delta, e.clientX, e.clientY);
             }
         }, { passive: false });
     }
@@ -359,31 +403,66 @@ async function submitUrlDocument() {
     }
 }
 
-// Viewport Zoom & Scaling Suite (Fit Page, Zoom In, Zoom Out, 100%)
-function applyZoomScale() {
+// Viewport Zoom & Scaling Suite (Fit Page, Fit Width, Zoom In/Out, Presets)
+function applyZoomScale(focalX = null, focalY = null) {
     const stage = document.getElementById("imageStageContainer");
-    if (stage) {
-        stage.style.transform = `scale(${zoomScale})`;
-        stage.style.transformOrigin = "center center";
+    if (!stage || !currentDocumentData || !currentDocumentData.pages) return;
+
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page) return;
+
+    const pageW = page.width || 1000;
+    const pageH = page.height || 1300;
+
+    const scaledW = Math.round(pageW * zoomScale);
+    const scaledH = Math.round(pageH * zoomScale);
+
+    stage.style.width = `${scaledW}px`;
+    stage.style.height = `${scaledH}px`;
+
+    const select = document.getElementById("zoomPresetSelect");
+    if (select) {
+        let matched = false;
+        for (let opt of select.options) {
+            if (Math.abs(parseFloat(opt.value) - zoomScale) < 0.04) {
+                select.value = opt.value;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched && !userZoomLocked) {
+            select.value = "fit";
+        }
     }
-    setElementText("zoomLevelBadge", `${Math.round(zoomScale * 100)}%`);
 }
 
-function zoomCanvas(delta) {
-    userZoomLocked = true; // User explicitly altered zoom: lock zoom until user clicks Fit Page!
-    zoomScale = Math.min(Math.max(0.15, zoomScale + delta), 3.0);
+function zoomCanvas(delta, mouseX = null, mouseY = null) {
+    userZoomLocked = true;
+    const oldScale = zoomScale;
+    zoomScale = Math.min(Math.max(0.15, zoomScale + delta), 3.5);
     applyZoomScale();
+
+    // Pointer-centered zooming: preserve cursor location
+    if (mouseX !== null && mouseY !== null) {
+        const wrapper = document.getElementById("canvasWrapper");
+        if (wrapper) {
+            const rect = wrapper.getBoundingClientRect();
+            const relX = mouseX - rect.left + wrapper.scrollLeft;
+            const relY = mouseY - rect.top + wrapper.scrollTop;
+            const ratio = zoomScale / oldScale;
+            wrapper.scrollLeft = relX * ratio - (mouseX - rect.left);
+            wrapper.scrollTop = relY * ratio - (mouseY - rect.top);
+        }
+    }
 }
 
 function fitImageToViewport(force = false) {
-    // If user explicitly altered zoom and didn't force fit, PRESERVE zoom!
     if (userZoomLocked && !force) {
         applyZoomScale();
         return;
     }
-
     if (force) {
-        userZoomLocked = false; // Reset lock when user explicitly clicks "Fit Page"
+        userZoomLocked = false;
     }
 
     const wrapper = document.getElementById("canvasWrapper");
@@ -400,14 +479,71 @@ function fitImageToViewport(force = false) {
     if (availW > 0 && availH > 0 && pageW > 0 && pageH > 0) {
         const scaleX = availW / pageW;
         const scaleY = availH / pageH;
-        zoomScale = Math.min(scaleX, scaleY) * 0.92;
-        zoomScale = Math.min(Math.max(0.15, zoomScale), 1.15);
+        zoomScale = Math.min(scaleX, scaleY);
+        zoomScale = Math.min(Math.max(0.15, zoomScale), 2.5);
         applyZoomScale();
     }
 }
 
+function fitWidthToViewport() {
+    userZoomLocked = true;
+    const wrapper = document.getElementById("canvasWrapper");
+    if (!wrapper || !currentDocumentData || !currentDocumentData.pages) return;
+
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page) return;
+
+    const availW = wrapper.clientWidth - 48;
+    const pageW = page.width || 1000;
+
+    if (availW > 0 && pageW > 0) {
+        zoomScale = availW / pageW;
+        zoomScale = Math.min(Math.max(0.2, zoomScale), 3.0);
+        applyZoomScale();
+    }
+}
+
+function handleZoomPresetChange(val) {
+    if (val === "fit") {
+        fitImageToViewport(true);
+    } else if (val === "fit-width") {
+        fitWidthToViewport();
+    } else {
+        userZoomLocked = true;
+        zoomScale = parseFloat(val);
+        applyZoomScale();
+    }
+}
+
+function togglePanTool() {
+    isPanToolActive = !isPanToolActive;
+    const btn = document.getElementById("panToolBtn");
+    const wrapper = document.getElementById("canvasWrapper");
+    if (btn) {
+        btn.classList.toggle("btn-secondary", !isPanToolActive);
+        btn.classList.toggle("active", isPanToolActive);
+        if (isPanToolActive) {
+            btn.style.background = "#2563eb";
+            btn.style.color = "#ffffff";
+        } else {
+            btn.style.background = "#334155";
+            btn.style.color = "";
+        }
+    }
+    if (wrapper) {
+        wrapper.classList.toggle("pan-mode", isPanToolActive);
+    }
+}
+
+function toggleFullscreenCanvas() {
+    const pane = document.getElementById("canvasViewport");
+    if (!pane) return;
+    pane.classList.toggle("fullscreen-pane");
+    setTimeout(() => fitImageToViewport(true), 150);
+}
+
 function resetZoom() {
-    userZoomLocked = true; // Set to 100% and lock
+    userZoomLocked = true;
     zoomScale = 1.0;
     applyZoomScale();
 }
@@ -456,7 +592,7 @@ function renderCanvasPage(page) {
         const bgImg = new Image();
         bgImg.onload = function() {
             ctx.drawImage(bgImg, 0, 0, width, height);
-            requestAnimationFrame(fitImageToViewport);
+            requestAnimationFrame(() => applyZoomScale());
         };
         bgImg.src = page.image_url;
     } else {
@@ -471,7 +607,7 @@ function renderCanvasPage(page) {
         ctx.fillStyle = "#94a3b8";
         ctx.font = "bold 20px Inter, sans-serif";
         ctx.fillText(`OMNIDOC AI ANALYZED DOCUMENT - PAGE ${page.page_number}`, 40, 50);
-        requestAnimationFrame(fitImageToViewport);
+        requestAnimationFrame(() => applyZoomScale());
     }
 
     const pageElements = page.elements || [];
@@ -653,16 +789,14 @@ function renderExtractedElementsList() {
     });
 }
 
-// Synchronized Reverse Reference Selection: Click card -> Highlight ONLY target on Image!
+// Synchronized Selection & Auto-scroll: Click card/polygon -> Highlight & scroll canvas to target box!
 function selectElement(elemId) {
     if (activeElementId === elemId) {
-        // Toggle off if already selected
         activeElementId = null;
     } else {
         activeElementId = elemId;
     }
 
-    // Direct SVG highlight update: NO canvas redraw, NO reload, and ZERO zoom resetting!
     updateSvgOverlayHighlights();
 
     const allCards = document.querySelectorAll(".element-card");
@@ -674,7 +808,56 @@ function selectElement(elemId) {
             targetCard.classList.add("highlight-sync");
             targetCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
+
+        // Auto-scroll Canvas Viewport smoothly to center the selected text box / bounding polygon!
+        scrollToCanvasElement(activeElementId);
     }
+}
+
+// Scroll Canvas Viewport to center bounding box of selected element
+function scrollToCanvasElement(elemId) {
+    if (!currentDocumentData || !currentDocumentData.pages) return;
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page || !page.elements) return;
+
+    const elem = page.elements.find(e => e.id === elemId);
+    if (!elem || !elem.bounding_box) return;
+
+    const wrapper = document.getElementById("canvasWrapper");
+    if (!wrapper) return;
+
+    const pageW = page.width || 1000;
+    const pageH = page.height || 1300;
+
+    let centerX = 0, centerY = 0;
+
+    if (elem.bounding_box.polygon && elem.bounding_box.polygon.length >= 8) {
+        const p = elem.bounding_box.polygon;
+        const xs = [p[0], p[2], p[4], p[6]];
+        const ys = [p[1], p[3], p[5], p[7]];
+        const minX = Math.min(...xs) * pageW;
+        const maxX = Math.max(...xs) * pageW;
+        const minY = Math.min(...ys) * pageH;
+        const maxY = Math.max(...ys) * pageH;
+        centerX = (minX + maxX) / 2;
+        centerY = (minY + maxY) / 2;
+    } else {
+        const bbox = elem.bounding_box;
+        centerX = (bbox.x + bbox.width / 2) * pageW;
+        centerY = (bbox.y + bbox.height / 2) * pageH;
+    }
+
+    const scaledCenterX = centerX * zoomScale;
+    const scaledCenterY = centerY * zoomScale;
+
+    const targetScrollLeft = scaledCenterX - wrapper.clientWidth / 2;
+    const targetScrollTop = scaledCenterY - wrapper.clientHeight / 2;
+
+    wrapper.scrollTo({
+        left: Math.max(0, targetScrollLeft),
+        top: Math.max(0, targetScrollTop),
+        behavior: "smooth"
+    });
 }
 
 // Requirement Filter Selector Toolbar

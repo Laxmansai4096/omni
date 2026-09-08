@@ -608,7 +608,34 @@ body {
 .canvas-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.zoom-controls-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: #1e293b;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 2px;
+}
+
+.zoom-preset-select {
+    background: #0f172a;
+    color: #60a5fa;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 3px 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+}
+
+.zoom-preset-select:focus {
+    border-color: var(--primary-blue);
 }
 
 .canvas-wrapper {
@@ -616,32 +643,50 @@ body {
     min-height: 0;
     overflow: auto;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    padding: 20px;
+    padding: 24px;
     position: relative;
-    background: #090d16;
+    background: #070a12;
+    scroll-behavior: smooth;
 }
 
-/* IMAGE STAGE CONTAINER: Wraps Canvas & Overlay for 100% Pixel Alignment */
+.canvas-wrapper.pan-mode {
+    cursor: grab !important;
+    user-select: none;
+}
+
+.canvas-wrapper.pan-mode:active {
+    cursor: grabbing !important;
+}
+
+/* Fullscreen Canvas Mode */
+.center-canvas-pane.fullscreen-pane {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 2000 !important;
+}
+
+/* IMAGE STAGE CONTAINER: Dynamic pixel-based scaled viewport wrapper */
 .image-stage-container {
     position: relative;
-    display: inline-block;
+    display: block;
     margin: auto;
-    transform-origin: center center;
-    transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    background: #ffffff;
     flex-shrink: 0;
+    transition: width 0.15s ease-out, height 0.15s ease-out;
 }
 
 #documentCanvas {
     display: block;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    width: 100%;
+    height: 100%;
     border-radius: 6px;
-    max-width: 100%;
-    max-height: calc(100vh - 160px);
-    width: auto;
-    height: auto;
-    object-fit: contain;
 }
 
 .bounding-overlay {
@@ -651,6 +696,26 @@ body {
     width: 100%;
     height: 100%;
     pointer-events: none;
+}
+
+/* Sleek Webkit Custom Scrollbars */
+::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+}
+
+::-webkit-scrollbar-track {
+    background: #090d16;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 5px;
+    border: 2px solid #090d16;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #3b82f6;
 }
 
 .bounding-polygon {
