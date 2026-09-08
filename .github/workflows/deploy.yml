@@ -23,7 +23,8 @@ jobs:
 
       - name: Build and Push Docker Image via GitHub Runner
         run: |
-          docker build -t acrexploreai65064.azurecr.io/omnidoc-fde:latest .
+          docker build --no-cache -t acrexploreai65064.azurecr.io/omnidoc-fde:${{ github.sha }} -t acrexploreai65064.azurecr.io/omnidoc-fde:latest .
+          docker push acrexploreai65064.azurecr.io/omnidoc-fde:${{ github.sha }}
           docker push acrexploreai65064.azurecr.io/omnidoc-fde:latest
 
       - name: Update Azure Container App with Live FDE Image
@@ -31,4 +32,5 @@ jobs:
           az containerapp update \
             --name omnidoc-app-k62z7k46ybsbm \
             --resource-group rg-explore-ai \
-            --image acrexploreai65064.azurecr.io/omnidoc-fde:latest
+            --image acrexploreai65064.azurecr.io/omnidoc-fde:${{ github.sha }}
+
