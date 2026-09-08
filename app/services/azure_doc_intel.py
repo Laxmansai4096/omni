@@ -45,7 +45,21 @@ class AzureDocIntelService:
             )
             result = poller.result()
 
-            return self._parse_azure_result(result, file_name, len(content_bytes), time.time() - start_time, image_url=image_url)
+            # Execute Azure OpenAI Vision Deep Analysis
+            vision_info = None
+            if image_url and "base64," in image_url:
+                try:
+                    t_v0 = time.time()
+                    b64_str = image_url.split("base64,")[-1]
+                    from app.services.vision_analyzer import AzureVisionAnalyzer
+                    vision_service = AzureVisionAnalyzer()
+                    v_res = vision_service.analyze_chart_image(b64_str)
+                    v_res["latency_ms"] = round((time.time() - t_v0) * 1000, 2)
+                    vision_info = v_res
+                except Exception as ve:
+                    logger.warning(f"Vision analysis execution warning: {ve}")
+
+            return self._parse_azure_result(result, file_name, len(content_bytes), time.time() - start_time, image_url=image_url, vision_info=vision_info)
         except Exception as e:
             logger.error(f"Error calling Azure AI Document Intelligence: {e}. Falling back to demo mode.")
             return self._fallback_analysis(file_name)
@@ -78,7 +92,7 @@ class AzureDocIntelService:
             logger.warning(f"Image preprocessing warning: {e}")
         return content_bytes, None, None, None
 
-    def _parse_azure_result(self, result: Any, file_name: str, file_size: int, duration_sec: float, image_url: Optional[str] = None) -> DocumentAnalysisResult:
+    def _parse_azure_result(self, result: Any, file_name: str, file_size: int, duration_sec: float, image_url: Optional[str] = None, vision_info: Optional[Dict[str, Any]] = None) -> DocumentAnalysisResult:
         doc_id = f"doc-{uuid.uuid4().hex[:8]}"
         pages: List[DocumentPage] = []
         category_counts: Dict[str, int] = {}
@@ -285,16 +299,19 @@ class AzureDocIntelService:
         now_str = datetime.datetime.utcnow().isoformat() + "Z"
         doc_intel_ms = round(duration_sec * 1000, 2)
         gateway_ms = 18.5
-        vision_ms = round(min(950.0, max(350.0, doc_intel_ms * 0.35)), 2)
+        
+        # Populate live vision metrics if available from Azure OpenAI Vision call
+        v_usage = vision_info.get("usage", {}) if vision_info else {}
+        vision_ms = vision_info.get("latency_ms", 350.0) if vision_info else 350.0
+        prompt_toks = v_usage.get("prompt_tokens", 1017 if vision_info else 0)
+        comp_toks = v_usage.get("completion_tokens", 800 if vision_info else 0)
+        total_toks = v_usage.get("total_tokens", prompt_toks + comp_toks)
+
         store_ms = 12.0
         total_pipeline_ms = round(gateway_ms + doc_intel_ms + vision_ms + store_ms, 2)
 
-        prompt_toks = 1250 + (len(all_elements) * 45)
-        comp_toks = 350 + (len(all_elements) * 20)
-        total_toks = prompt_toks + comp_toks
-
         doc_intel_cost = round(0.0015 * max(1, len(pages_list)), 4)
-        vision_cost = round((0.15 * prompt_toks / 1000000) + (0.60 * comp_toks / 1000000), 4)
+        vision_cost = round((0.15 * prompt_toks / 1000000) + (0.60 * comp_toks / 1000000), 6)
         total_cost = round(doc_intel_cost + vision_cost, 4)
 
         observability = AIObservabilitySummary(
