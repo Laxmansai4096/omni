@@ -142,7 +142,40 @@ class DocumentQueueWorker:
                 update_job_stage(job_id, status="FAILED", progress_pct=50, current_stage="EXTRACTION_FAILED", error_message=err_str)
                 receiver.dead_letter_message(msg, reason="ProcessingError", error_description=err_str[:250])
 
+    def process_job_direct(self, job_id: str, file_name: str, blob_name: str, file_bytes: Optional[bytes] = None):
+        """Directly processes a job without requiring Service Bus queue message."""
+        logger.info(f"[Worker:Direct] Processing job '{job_id}' for file '{file_name}'.")
+        update_job_stage(job_id, status="PROCESSING", progress_pct=20, current_stage="FETCHING_FROM_AZURE_BLOB")
+        if not file_bytes:
+            file_bytes = storage_service.download_document(blob_name)
+        if not file_bytes:
+            err_msg = f"Failed to retrieve blob {blob_name} from storage"
+            logger.error(f"[Worker:Direct] {err_msg}")
+            update_job_stage(job_id, status="FAILED", progress_pct=20, current_stage="FETCH_FAILED", error_message=err_msg)
+            return
+
+        update_job_stage(job_id, status="PROCESSING", progress_pct=50, current_stage="AZURE_DOCUMENT_INTELLIGENCE_OCR")
+        with trace_span("worker.process_document_direct", {"job_id": job_id, "file_name": file_name, "bytes": len(file_bytes)}):
+            try:
+                result = self._doc_intel.analyze_document_bytes(file_bytes, file_name)
+                result.document_id = job_id
+                
+                update_job_stage(job_id, status="PROCESSING", progress_pct=85, current_stage="AZURE_OPENAI_VISION_ANALYSIS")
+                result_dict = result.model_dump()
+
+                update_job_stage(job_id, status="PROCESSING", progress_pct=95, current_stage="PERSISTING_STRUCTURED_DATA")
+                save_job_result(job_id, result_dict)
+                save_document_to_db(job_id, file_name, len(file_bytes), "async_queue", result_dict)
+
+                update_job_stage(job_id, status="COMPLETED", progress_pct=100, current_stage="PROCESSING_COMPLETED")
+                logger.info(f"[Worker:Direct] Successfully processed job '{job_id}' ({result.summary.total_elements} elements).")
+            except Exception as e:
+                err_str = str(e)
+                logger.error(f"[Worker:Direct] Processing exception for job {job_id}: {err_str}", exc_info=True)
+                update_job_stage(job_id, status="FAILED", progress_pct=50, current_stage="EXTRACTION_FAILED", error_message=err_str)
+
 # Global singleton worker
+
 worker_instance = DocumentQueueWorker()
 
 if __name__ == "__main__":

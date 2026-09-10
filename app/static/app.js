@@ -274,43 +274,71 @@ async function startAsyncServiceBusPipeline(file) {
         if (badge) badge.textContent = jobId;
         if (label) label.textContent = `Job Enqueued in 'ai-jobs-queue'`;
 
-        // Connect SSE for real-time progress stream
+        // Connect SSE for real-time progress stream with Polling Fallback
         if (activeEventSource) activeEventSource.close();
-        activeEventSource = new EventSource(`/api/v1/jobs/${jobId}/stream`);
+        
+        let pollTimer = null;
+        let isDone = false;
+        
+        const stopTracking = () => {
+            isDone = true;
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            if (activeEventSource) { activeEventSource.close(); activeEventSource = null; }
+        };
 
-        activeEventSource.onmessage = (event) => {
+        const checkStatus = async () => {
+            if (isDone) return;
             try {
-                const job = JSON.parse(event.data);
-                updateAsyncProgressUI(job);
-
-                if (job.status === "COMPLETED") {
-                    activeEventSource.close();
-                    if (btn) {
-                        btn.disabled = false;
-                        btn.innerHTML = `<i class="fa-solid fa-check-double"></i> ASYNC JOB COMPLETED!`;
-                        setTimeout(() => {
-                            btn.innerHTML = `<i class="fa-solid fa-bolt"></i> PROCESS IMAGE`;
-                        }, 3000);
-                    }
-                    // Load completed document directly
-                    loadSampleDocument(job.job_id);
-                    loadHistoryDropdown();
-                } else if (job.status === "FAILED") {
-                    activeEventSource.close();
-                    if (label) label.textContent = `Processing Failed: ${job.error_message || 'Unknown'}`;
-                    if (btn) {
-                        btn.disabled = false;
-                        btn.innerHTML = `<i class="fa-solid fa-bolt"></i> RETRY ASYNC JOB`;
+                const sResp = await fetch(`/api/v1/jobs/${jobId}/status`);
+                if (sResp.ok) {
+                    const job = await sResp.json();
+                    updateAsyncProgressUI(job);
+                    if (job.status === "COMPLETED") {
+                        stopTracking();
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.innerHTML = `<i class="fa-solid fa-check-double"></i> ASYNC JOB COMPLETED!`;
+                            setTimeout(() => {
+                                btn.innerHTML = `<i class="fa-solid fa-bolt"></i> PROCESS IMAGE`;
+                            }, 3000);
+                        }
+                        loadSampleDocument(job.job_id);
+                        loadHistoryDropdown();
+                    } else if (job.status === "FAILED") {
+                        stopTracking();
+                        if (label) label.textContent = `Processing Failed: ${job.error_message || 'Unknown'}`;
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.innerHTML = `<i class="fa-solid fa-bolt"></i> RETRY ASYNC JOB`;
+                        }
                     }
                 }
-            } catch (err) {
-                console.warn("SSE parse error:", err);
+            } catch (e) {
+                console.warn("Polling status error:", e);
             }
         };
 
-        activeEventSource.onerror = () => {
-            if (activeEventSource) activeEventSource.close();
-        };
+        // Fallback polling interval every 1 second
+        pollTimer = setInterval(checkStatus, 1000);
+
+        try {
+            activeEventSource = new EventSource(`/api/v1/jobs/${jobId}/stream`);
+            activeEventSource.onmessage = (event) => {
+                try {
+                    const job = JSON.parse(event.data);
+                    updateAsyncProgressUI(job);
+                    if (job.status === "COMPLETED" || job.status === "FAILED") {
+                        checkStatus();
+                    }
+                } catch (err) {}
+            };
+            activeEventSource.onerror = () => {
+                if (activeEventSource) activeEventSource.close();
+            };
+        } catch (e) {
+            console.warn("SSE stream unavailable, relying on polling.");
+        }
+
 
     } catch (e) {
         alert(`Service Bus Error: ${e.message}`);

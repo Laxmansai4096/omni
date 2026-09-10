@@ -78,8 +78,9 @@ class AzureServiceBusService:
                     return False
             
             # Local fallback log
-            logger.info(f"[ServiceBus:LocalFallback] Mock enqueued job {job_id}")
-            return True
+            logger.info(f"[ServiceBus:LocalFallback] Service Bus not configured. Job {job_id} requires fallback handling.")
+            return False
+
 
     def publish_result(self, job_id: str, status: str, result_summary: Dict[str, Any]) -> bool:
         """

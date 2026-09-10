@@ -17,9 +17,11 @@ from app.services.telemetry import trace_span
 from app.services.sample_generator import get_sample_document, build_sample_expense_report, build_sample_financial_report
 from app.database.store import save_document_to_db, get_document_from_db, list_recent_documents_from_db, update_document_element_in_db
 from app.database.job_store import create_job, get_job, get_job_result, list_recent_jobs
+from app.worker.processor import worker_instance
 from app.config import settings
 
 router = APIRouter()
+
 doc_intel_service = AzureDocIntelService()
 
 # In-memory document storage cache for demo/active sessions
@@ -102,7 +104,7 @@ async def update_element_text(doc_id: str, element_id: str, payload: Dict[str, A
 # ==========================================
 
 @router.post("/jobs/submit", status_code=202)
-async def submit_async_job(file: UploadFile = File(...)):
+async def submit_async_job(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     """
     Enterprise FDE Ingestion:
     Streams file into Azure Blob Storage, publishes processing job to Azure Service Bus,
@@ -131,9 +133,9 @@ async def submit_async_job(file: UploadFile = File(...)):
         options={"blob_url": blob_url}
     )
 
-    if not published and not service_bus_service.is_configured:
-        # If in offline/local mock mode, automatically process synchronously in background
-        pass
+    if not published:
+        # Fallback to in-process background worker execution if Service Bus is not available
+        background_tasks.add_task(worker_instance.process_job_direct, job_id, file.filename, blob_name, content)
 
     return {
         "job_id": job_id,
@@ -176,17 +178,13 @@ async def stream_job_progress(job_id: str):
     for UI visualization of the Azure Service Bus worker pipeline.
     """
     async def event_generator():
-        last_stage = None
-        for _ in range(120):  # Maximum 120 seconds wait
+        for _ in range(150):  # Maximum 150 seconds wait
             job = get_job(job_id)
             if not job:
                 yield f"data: {json.dumps({'error': 'Job not found'})}\n\n"
                 break
 
-            current_stage = job.get("current_stage")
             status = job.get("status")
-
-            # Emit stage change or status update
             yield f"data: {json.dumps(job)}\n\n"
 
             if status in ("COMPLETED", "FAILED"):
@@ -194,7 +192,16 @@ async def stream_job_progress(job_id: str):
 
             await asyncio.sleep(0.8)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
 
 @router.get("/jobs/recent")
 async def list_recent_async_jobs(limit: int = 15):
