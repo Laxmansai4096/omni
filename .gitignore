@@ -48,3 +48,7 @@ app/database/omnidoc_store.db
 # Local uploads
 app/static/uploads/*
 !app/static/uploads/.gitkeep
+
+# Scratch directory
+scratch/
+

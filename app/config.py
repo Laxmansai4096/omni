@@ -17,6 +17,18 @@ class Settings(BaseSettings):
         return os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "")
 
     @property
+    def AZURE_TRANSLATOR_KEY(self) -> str:
+        return os.getenv("AZURE_TRANSLATOR_KEY", "")
+
+    @property
+    def AZURE_TRANSLATOR_ENDPOINT(self) -> str:
+        return os.getenv("AZURE_TRANSLATOR_ENDPOINT", "https://api.cognitive.microsofttranslator.com/")
+
+    @property
+    def AZURE_TRANSLATOR_REGION(self) -> str:
+        return os.getenv("AZURE_TRANSLATOR_REGION", "eastus")
+
+    @property
     def AZURE_OPENAI_ENDPOINT(self) -> str:
         return os.getenv("AZURE_OPENAI_ENDPOINT", "")
 

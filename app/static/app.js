@@ -5,6 +5,8 @@ let zoomScale = 1.0;
 let userZoomLocked = false;
 let activeElementId = null;
 let pendingSelectedFile = null;
+let currentTargetLanguage = 'none';
+let elementTranslationsCache = {};
 
 // Interactive Pan Mode State
 let isPanToolActive = false;
@@ -35,15 +37,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const wrapper = document.getElementById("canvasWrapper");
     if (wrapper) {
-        // Pan Mode Mouse Drag Handling
+        // Native Mouse Drag-to-Pan on Canvas Viewport
         wrapper.addEventListener("mousedown", (e) => {
-            if (isPanToolActive || e.button === 1) { // Left click in Pan Mode or Middle Click
+            // Initiate drag-to-pan if clicking on wrapper, stage, or canvas background (not on interactive svg polygons)
+            if (e.target.tagName === 'CANVAS' || e.target.classList.contains('canvas-wrapper') || e.target.classList.contains('image-stage-container')) {
                 isMouseDownPan = true;
                 panStartX = e.clientX;
                 panStartY = e.clientY;
                 panStartScrollLeft = wrapper.scrollLeft;
                 panStartScrollTop = wrapper.scrollTop;
-                e.preventDefault();
+                wrapper.style.cursor = "grabbing";
             }
         });
 
@@ -58,16 +61,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
         window.addEventListener("mouseup", () => {
             isMouseDownPan = false;
+            if (wrapper) wrapper.style.cursor = "";
         });
 
-        // Mouse Wheel Pointer-Centered Zooming
+        // Direct Smooth Mouse Wheel Pointer-Centered Zooming
         wrapper.addEventListener("wheel", (e) => {
-            if (e.ctrlKey || isPanToolActive) {
-                e.preventDefault();
-                userZoomLocked = true;
-                const delta = e.deltaY < 0 ? 0.15 : -0.15;
-                zoomCanvas(delta, e.clientX, e.clientY);
-            }
+            e.preventDefault();
+            userZoomLocked = true;
+            const delta = e.deltaY < 0 ? 0.06 : -0.06;
+            zoomCanvas(delta, e.clientX, e.clientY);
         }, { passive: false });
     }
 });
@@ -420,39 +422,37 @@ function applyZoomScale(focalX = null, focalY = null) {
     stage.style.width = `${scaledW}px`;
     stage.style.height = `${scaledH}px`;
 
-    const select = document.getElementById("zoomPresetSelect");
-    if (select) {
-        let matched = false;
-        for (let opt of select.options) {
-            if (Math.abs(parseFloat(opt.value) - zoomScale) < 0.04) {
-                select.value = opt.value;
-                matched = true;
-                break;
-            }
-        }
-        if (!matched && !userZoomLocked) {
-            select.value = "fit";
-        }
+    const badge = document.getElementById("zoomLevelBadge");
+    if (badge) {
+        badge.innerText = `${Math.round(zoomScale * 100)}%`;
     }
 }
 
 function zoomCanvas(delta, mouseX = null, mouseY = null) {
     userZoomLocked = true;
     const oldScale = zoomScale;
-    zoomScale = Math.min(Math.max(0.15, zoomScale + delta), 3.5);
+    const wrapper = document.getElementById("canvasWrapper");
+
+    let maxAllowedScale = 1.50;
+    if (wrapper && currentDocumentData && currentDocumentData.pages) {
+        const page = currentDocumentData.pages[currentPageIndex];
+        if (page && page.width) {
+            const fitW = (wrapper.clientWidth - 48) / page.width;
+            maxAllowedScale = Math.max(fitW * 1.35, 1.35);
+        }
+    }
+
+    zoomScale = Math.min(Math.max(0.15, zoomScale + delta), maxAllowedScale);
     applyZoomScale();
 
     // Pointer-centered zooming: preserve cursor location
-    if (mouseX !== null && mouseY !== null) {
-        const wrapper = document.getElementById("canvasWrapper");
-        if (wrapper) {
-            const rect = wrapper.getBoundingClientRect();
-            const relX = mouseX - rect.left + wrapper.scrollLeft;
-            const relY = mouseY - rect.top + wrapper.scrollTop;
-            const ratio = zoomScale / oldScale;
-            wrapper.scrollLeft = relX * ratio - (mouseX - rect.left);
-            wrapper.scrollTop = relY * ratio - (mouseY - rect.top);
-        }
+    if (mouseX !== null && mouseY !== null && wrapper) {
+        const rect = wrapper.getBoundingClientRect();
+        const relX = mouseX - rect.left + wrapper.scrollLeft;
+        const relY = mouseY - rect.top + wrapper.scrollTop;
+        const ratio = zoomScale / oldScale;
+        wrapper.scrollLeft = relX * ratio - (mouseX - rect.left);
+        wrapper.scrollTop = relY * ratio - (mouseY - rect.top);
     }
 }
 
@@ -471,17 +471,19 @@ function fitImageToViewport(force = false) {
     const page = currentDocumentData.pages[currentPageIndex];
     if (!page) return;
 
-    const availW = wrapper.clientWidth - 48;
-    const availH = wrapper.clientHeight - 48;
+    const availW = wrapper.clientWidth;
+    const availH = wrapper.clientHeight;
     const pageW = page.width || 1000;
     const pageH = page.height || 1300;
 
     if (availW > 0 && availH > 0 && pageW > 0 && pageH > 0) {
         const scaleX = availW / pageW;
         const scaleY = availH / pageH;
+        // Exact fit: scale such that at least 2 borders (vertical or horizontal or both) touch the edges of the zoom workspace
         zoomScale = Math.min(scaleX, scaleY);
-        zoomScale = Math.min(Math.max(0.15, zoomScale), 2.5);
         applyZoomScale();
+        wrapper.scrollLeft = 0;
+        wrapper.scrollTop = 0;
     }
 }
 
@@ -493,12 +495,11 @@ function fitWidthToViewport() {
     const page = currentDocumentData.pages[currentPageIndex];
     if (!page) return;
 
-    const availW = wrapper.clientWidth - 48;
+    const availW = wrapper.clientWidth;
     const pageW = page.width || 1000;
 
     if (availW > 0 && pageW > 0) {
         zoomScale = availW / pageW;
-        zoomScale = Math.min(Math.max(0.2, zoomScale), 3.0);
         applyZoomScale();
     }
 }
@@ -701,20 +702,255 @@ function updateSvgOverlayHighlights() {
 
         let tag = g.querySelector(".active-focus-tag");
         if (isActive) {
-            if (!tag) {
+            const page = currentDocumentData ? currentDocumentData.pages[currentPageIndex] : null;
+            const elemObj = page ? (page.elements || []).find(e => e.id === elemId) : null;
+            let tagLabel = elemObj ? (elemObj.text_content || elemObj.label) : (g.getAttribute("data-label") || category.toUpperCase());
+
+            if (currentTargetLanguage !== 'none') {
+                const cacheKey = `${elemId}_${currentTargetLanguage}`;
+                if (elementTranslationsCache[cacheKey]) {
+                    const trans = elementTranslationsCache[cacheKey];
+                    tagLabel = `[${trans.target_language_name}] ${trans.translated_text}`;
+                }
+            }
+
+            const formattedTag = `▶ ${tagLabel.slice(0, 45)}${tagLabel.length > 45 ? '...' : ''}`;
+
+            if (tag) {
+                tag.textContent = formattedTag;
+            } else {
                 const textSvg = document.createElementNS("http://www.w3.org/2000/svg", "text");
                 const minX = parseFloat(g.getAttribute("data-minx") || "10");
                 const minY = parseFloat(g.getAttribute("data-miny") || "30");
                 textSvg.setAttribute("x", Math.max(10, minX + 4));
                 textSvg.setAttribute("y", Math.max(24, minY - 6));
                 textSvg.setAttribute("class", "active-focus-tag");
-                textSvg.textContent = `▶ SELECTED: ${g.getAttribute("data-label") || category.toUpperCase()}`;
+                textSvg.textContent = formattedTag;
                 g.appendChild(textSvg);
             }
         } else if (tag) {
             tag.remove();
         }
     });
+}
+
+// Toggle Inline Edit Panel for an Element Card
+function toggleEditElement(elemId, event) {
+    if (event) event.stopPropagation();
+    const panel = document.getElementById(`edit-panel-${elemId}`);
+    if (panel) {
+        const isHidden = panel.style.display === "none" || !panel.style.display;
+        panel.style.display = isHidden ? "block" : "none";
+        if (isHidden) {
+            const input = document.getElementById(`edit-text-${elemId}`);
+            if (input) input.focus();
+        }
+    }
+}
+
+// Save Edited Element Text Content, Re-trigger Azure Translation & Reflect on Image Canvas
+async function saveElementText(elemId, event) {
+    if (event) event.stopPropagation();
+    const input = document.getElementById(`edit-text-${elemId}`);
+    if (!input) return;
+
+    const newText = input.value.trim();
+    if (!newText) {
+        alert("Text content cannot be empty.");
+        return;
+    }
+
+    if (!currentDocumentData || !currentDocumentData.pages) return;
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page || !page.elements) return;
+
+    const elem = page.elements.find(e => e.id === elemId);
+    if (!elem) return;
+
+    const payload = { text_content: newText };
+
+    // Structured data updating per category
+    if (elem.category === 'table') {
+        if (!elem.table_data) {
+            elem.table_data = { markdown_table: newText, csv_content: newText, row_count: 0, column_count: 0, cells: [] };
+        } else {
+            elem.table_data.markdown_table = newText;
+        }
+        elem.text_content = newText;
+        payload.table_data = { markdown_table: newText };
+    } else if (elem.category === 'key_value') {
+        const newKv = {};
+        newText.split("\n").forEach(line => {
+            const idx = line.indexOf(":");
+            if (idx !== -1) {
+                const k = line.slice(0, idx).trim();
+                const v = line.slice(idx + 1).trim();
+                if (k) newKv[k] = v;
+            }
+        });
+        elem.key_value_pair = newKv;
+        elem.text_content = newText;
+        payload.key_value_pair = newKv;
+    } else if (elem.category === 'chart' || elem.category === 'figure') {
+        const lines = newText.split("\n");
+        const title = lines[0] || "Chart Element";
+        const note = lines.slice(1).join("\n");
+        if (!elem.chart_summary) {
+            elem.chart_summary = { title: title, note: note };
+        } else {
+            elem.chart_summary.title = title;
+            elem.chart_summary.note = note;
+        }
+        elem.text_content = newText;
+        payload.chart_summary = elem.chart_summary;
+    } else {
+        elem.text_content = newText;
+    }
+
+    // Hide edit panel
+    const panel = document.getElementById(`edit-panel-${elemId}`);
+    if (panel) panel.style.display = "none";
+
+    // Update card body display text in DOM
+    const displayContainer = document.getElementById(`card-text-display-${elemId}`);
+    if (displayContainer) {
+        if (elem.category === 'table' && elem.table_data) {
+            displayContainer.innerHTML = formatMarkdownTableToHtml(elem.table_data.markdown_table);
+        } else if (elem.category === 'key_value' && elem.key_value_pair) {
+            displayContainer.innerHTML = `
+                <div class="kv-grid" style="display:grid; grid-template-columns: 180px 1fr; gap: 8px; font-size:0.8rem;">
+                    ${Object.entries(elem.key_value_pair).map(([k, v]) => `<div><strong style="color:#f97316;">${escapeHtml(k)}:</strong></div><div>${escapeHtml(v)}</div>`).join("")}
+                </div>
+            `;
+        } else if ((elem.category === 'chart' || elem.category === 'figure') && elem.chart_summary) {
+            const c = elem.chart_summary;
+            displayContainer.innerHTML = `
+                <div class="chart-box" style="font-size:0.8rem;">
+                    <strong>Visual Region Title:</strong> ${escapeHtml(c.title || 'Chart Element')}<br>
+                    <span style="color:var(--text-muted);">${escapeHtml(c.note || '')}</span>
+                </div>
+            `;
+        } else {
+            displayContainer.innerHTML = `<p style="font-size:0.85rem; color: var(--text-main); line-height:1.5;">${escapeHtml(newText)}</p>`;
+        }
+    }
+
+    // Clear translation cache for all languages for this element
+    ['hi', 'te', 'fr', 'de', 'kn'].forEach(lang => {
+        delete elementTranslationsCache[`${elemId}_${lang}`];
+    });
+
+    // Re-fetch translation from Azure Translator API if target language is selected
+    if (currentTargetLanguage !== 'none') {
+        const transContainer = document.getElementById(`trans-container-${elemId}`);
+        if (transContainer) {
+            transContainer.innerHTML = `
+                <div class="translated-card-section" style="border-left-color: #60a5fa;">
+                    <div class="translated-card-header" style="color: #60a5fa;">
+                        <span><i class="fa-solid fa-circle-notch fa-spin"></i> Re-translating updated data with Azure Translator...</span>
+                    </div>
+                </div>
+            `;
+        }
+        await fetchElementTranslation(elem, currentTargetLanguage);
+    }
+
+    // Re-render SVG overlay highlights to reflect updated text on image canvas
+    updateSvgOverlayHighlights();
+
+    // Persist changes to backend SQLite DB & Cache
+    const docId = currentDocumentData.document_id || "active-doc";
+    try {
+        await fetch(`/api/v1/documents/${docId}/elements/${elemId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+    } catch (err) {
+        console.warn("Could not persist element edit to DB:", err);
+    }
+}
+
+// Azure AI Translator Language Dropdown Handler
+function handleLanguageChange(lang) {
+    currentTargetLanguage = lang;
+    renderExtractedElementsList();
+    if (activeElementId !== null && lang !== 'none') {
+        const page = currentDocumentData ? currentDocumentData.pages[currentPageIndex] : null;
+        const elem = page ? (page.elements || []).find(e => e.id === activeElementId) : null;
+        if (elem) {
+            fetchElementTranslation(elem, currentTargetLanguage);
+        }
+    }
+}
+
+// Fetch Translation for an Extracted Element from Azure AI Translator API
+async function fetchElementTranslation(elem, targetLang) {
+    if (!elem || targetLang === 'none') return;
+    const cacheKey = `${elem.id}_${targetLang}`;
+    
+    if (elementTranslationsCache[cacheKey]) {
+        updateElementTranslationUI(elem.id, elementTranslationsCache[cacheKey]);
+        return;
+    }
+
+    let textToTranslate = elem.text_content || "";
+    if (elem.category === 'table' && elem.table_data && elem.table_data.markdown_table) {
+        textToTranslate = elem.table_data.markdown_table;
+    } else if (elem.category === 'key_value' && elem.key_value_pair) {
+        textToTranslate = Object.entries(elem.key_value_pair).map(([k, v]) => `${k}: ${v}`).join("\n");
+    } else if (elem.category === 'chart' || elem.category === 'figure') {
+        if (elem.chart_summary) {
+            textToTranslate = `${elem.chart_summary.title || ''}\n${elem.chart_summary.note || ''}`.trim() || textToTranslate;
+        }
+    }
+
+    if (!textToTranslate.trim()) return;
+
+    try {
+        const resp = await fetch("/api/v1/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: textToTranslate, target_language: targetLang, source_language: "en" })
+        });
+
+        if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            throw new Error(errData.detail || "Translation request failed");
+        }
+
+        const result = await resp.json();
+        elementTranslationsCache[cacheKey] = result;
+        updateElementTranslationUI(elem.id, result);
+    } catch (e) {
+        console.error("Translation error:", e);
+        const errResult = {
+            translated_text: `Error translating: ${e.message}`,
+            target_language_name: targetLang.toUpperCase(),
+            is_fallback: true,
+            status: "error"
+        };
+        updateElementTranslationUI(elem.id, errResult);
+    }
+}
+
+// Dynamically Update Translation Container inside Element Card
+function updateElementTranslationUI(elemId, transResult) {
+    const container = document.getElementById(`trans-container-${elemId}`);
+    if (!container) return;
+
+    const isFallback = transResult.is_fallback;
+    const langName = transResult.target_language_name || "Translated";
+
+    container.innerHTML = `
+        <div class="translated-card-section">
+            <div class="translated-card-header">
+                <span><i class="fa-solid fa-language"></i> Azure Translator (${langName})</span>
+                <span class="translate-badge-chip">${isFallback ? '<i class="fa-solid fa-triangle-exclamation"></i> Fallback' : '<i class="fa-solid fa-bolt"></i> Live Azure AI'}</span>
+            </div>
+            <div class="translated-card-text">${escapeHtml(transResult.translated_text)}</div>
+        </div>
+    `;
 }
 
 // Render Extracted Elements on Bottom Inspector Panel with Reverse Reference Click Handlers
@@ -772,16 +1008,88 @@ function renderExtractedElementsList() {
             detailsHtml = `<p style="font-size:0.85rem; color: var(--text-main); line-height:1.5;">${escapeHtml(elem.text_content)}</p>`;
         }
 
+        // Translation container placeholder
+        let transHtml = "";
+        if (currentTargetLanguage !== 'none') {
+            const cacheKey = `${elem.id}_${currentTargetLanguage}`;
+            if (elementTranslationsCache[cacheKey]) {
+                const res = elementTranslationsCache[cacheKey];
+                transHtml = `
+                    <div class="trans-container" id="trans-container-${elem.id}">
+                        <div class="translated-card-section">
+                            <div class="translated-card-header">
+                                <span><i class="fa-solid fa-language"></i> Azure Translator (${res.target_language_name})</span>
+                                <span class="translate-badge-chip">${res.is_fallback ? 'Fallback' : '<i class="fa-solid fa-bolt"></i> Live Azure AI'}</span>
+                            </div>
+                            <div class="translated-card-text">${escapeHtml(res.translated_text)}</div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                transHtml = `
+                    <div class="trans-container" id="trans-container-${elem.id}">
+                        <div class="translated-card-section" style="border-left-color: #60a5fa;">
+                            <div class="translated-card-header" style="color: #60a5fa;">
+                                <span><i class="fa-solid fa-circle-notch fa-spin"></i> Azure Translator processing...</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                // Trigger background fetch
+                fetchElementTranslation(elem, currentTargetLanguage);
+            }
+        } else {
+            transHtml = `<div class="trans-container" id="trans-container-${elem.id}"></div>`;
+        }
+
+        let textToEdit = elem.text_content || "";
+        let editLabel = "Edit Extracted Text:";
+        let editIcon = "fa-pen-to-square";
+
+        if (elem.category === 'table') {
+            editLabel = "Edit Table Data (Markdown / Rows & Columns):";
+            editIcon = "fa-table";
+            if (elem.table_data && elem.table_data.markdown_table) {
+                textToEdit = elem.table_data.markdown_table;
+            }
+        } else if (elem.category === 'key_value') {
+            editLabel = "Edit Key-Value Pairs (Key: Value per line):";
+            editIcon = "fa-key";
+            if (elem.key_value_pair) {
+                textToEdit = Object.entries(elem.key_value_pair).map(([k, v]) => `${k}: ${v}`).join("\n");
+            }
+        } else if (elem.category === 'chart' || elem.category === 'figure') {
+            editLabel = "Edit Chart / Graph Data & Title:";
+            editIcon = "fa-chart-column";
+            if (elem.chart_summary) {
+                textToEdit = `${elem.chart_summary.title || ''}\n${elem.chart_summary.note || ''}`.trim() || textToEdit;
+            }
+        }
+
         card.innerHTML = `
             <div class="card-header">
                 <div class="card-title-group" style="display:flex; align-items:center; gap:8px;">
                     <span class="category-tag tag-${elem.category}">${elem.category}</span>
                     <span class="card-label" style="font-weight:600; font-size:0.85rem;">${escapeHtml(elem.label)}</span>
                 </div>
-                <span class="confidence-badge" style="font-size:0.75rem; color:var(--text-muted);">${Math.round(elem.confidence * 100)}% Match</span>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button class="btn-card-action btn-edit-elem" onclick="toggleEditElement('${elem.id}', event)" title="Edit extracted content"><i class="fa-solid ${editIcon}"></i> Edit</button>
+                    <span class="confidence-badge" style="font-size:0.75rem; color:var(--text-muted);">${Math.round(elem.confidence * 100)}% Match</span>
+                </div>
             </div>
             <div class="card-body">
-                ${detailsHtml}
+                <div id="card-text-display-${elem.id}">
+                    ${detailsHtml}
+                </div>
+                <div class="edit-panel" id="edit-panel-${elem.id}" style="display:none;" onclick="event.stopPropagation()">
+                    <label style="font-size:0.75rem; font-weight:700; color:#38bdf8; display:block; margin-bottom:4px;"><i class="fa-solid ${editIcon}"></i> ${editLabel}</label>
+                    <textarea class="edit-textarea" id="edit-text-${elem.id}">${escapeHtml(textToEdit)}</textarea>
+                    <div style="display:flex; gap:6px; margin-top:6px;">
+                        <button class="btn btn-primary btn-sm" onclick="saveElementText('${elem.id}', event)"><i class="fa-solid fa-check"></i> Save & Translate</button>
+                        <button class="btn btn-secondary btn-sm" onclick="toggleEditElement('${elem.id}', event)">Cancel</button>
+                    </div>
+                </div>
+                ${transHtml}
             </div>
         `;
 
@@ -811,10 +1119,22 @@ function selectElement(elemId) {
 
         // Auto-scroll Canvas Viewport smoothly to center the selected text box / bounding polygon!
         scrollToCanvasElement(activeElementId);
+
+        // Trigger translation for selected element if target language is selected
+        if (currentTargetLanguage !== 'none') {
+            const page = currentDocumentData ? currentDocumentData.pages[currentPageIndex] : null;
+            const elem = page ? (page.elements || []).find(e => e.id === activeElementId) : null;
+            if (elem) {
+                fetchElementTranslation(elem, currentTargetLanguage);
+            }
+        }
+    } else {
+        // When element is unselected, smoothly fit the whole page image back in view
+        fitImageToViewport(true);
     }
 }
 
-// Scroll Canvas Viewport to center bounding box of selected element
+// Enterprise Target-Centric Focus: Smoothly zooms into the selected text box within the zooming area in a bold RED frame
 function scrollToCanvasElement(elemId) {
     if (!currentDocumentData || !currentDocumentData.pages) return;
     const page = currentDocumentData.pages[currentPageIndex];
@@ -829,35 +1149,61 @@ function scrollToCanvasElement(elemId) {
     const pageW = page.width || 1000;
     const pageH = page.height || 1300;
 
-    let centerX = 0, centerY = 0;
+    let minX = 0, maxX = 0, minY = 0, maxY = 0;
 
     if (elem.bounding_box.polygon && elem.bounding_box.polygon.length >= 8) {
         const p = elem.bounding_box.polygon;
         const xs = [p[0], p[2], p[4], p[6]];
         const ys = [p[1], p[3], p[5], p[7]];
-        const minX = Math.min(...xs) * pageW;
-        const maxX = Math.max(...xs) * pageW;
-        const minY = Math.min(...ys) * pageH;
-        const maxY = Math.max(...ys) * pageH;
-        centerX = (minX + maxX) / 2;
-        centerY = (minY + maxY) / 2;
+        minX = Math.min(...xs) * pageW;
+        maxX = Math.max(...xs) * pageW;
+        minY = Math.min(...ys) * pageH;
+        maxY = Math.max(...ys) * pageH;
     } else {
         const bbox = elem.bounding_box;
-        centerX = (bbox.x + bbox.width / 2) * pageW;
-        centerY = (bbox.y + bbox.height / 2) * pageH;
+        minX = bbox.x * pageW;
+        maxX = (bbox.x + bbox.width) * pageW;
+        minY = bbox.y * pageH;
+        maxY = (bbox.y + bbox.height) * pageH;
     }
 
-    const scaledCenterX = centerX * zoomScale;
-    const scaledCenterY = centerY * zoomScale;
+    const boxW = Math.max(30, maxX - minX);
+    const boxH = Math.max(20, maxY - minY);
+    const centerX = minX + boxW / 2;
+    const centerY = minY + boxH / 2;
 
-    const targetScrollLeft = scaledCenterX - wrapper.clientWidth / 2;
-    const targetScrollTop = scaledCenterY - wrapper.clientHeight / 2;
+    // Calculate base fit scale for full page image inside viewport
+    const availW = wrapper.clientWidth;
+    const availH = wrapper.clientHeight;
+    const fitScale = Math.min(availW / pageW, availH / pageH);
 
-    wrapper.scrollTo({
-        left: Math.max(0, targetScrollLeft),
-        top: Math.max(0, targetScrollTop),
-        behavior: "smooth"
-    });
+    // Controlled target scale boost strictly limited so image never goes beyond the zoom workspace
+    let targetScale = fitScale * 1.25;
+    const maxAllowedScale = Math.max(fitScale * 1.35, 1.35);
+    targetScale = Math.min(targetScale, maxAllowedScale);
+
+    userZoomLocked = true;
+    zoomScale = targetScale;
+    applyZoomScale();
+
+    // Center viewport scroll smoothly on the selected text box
+    setTimeout(() => {
+        const stage = document.getElementById("imageStageContainer");
+        const stageLeft = stage ? stage.offsetLeft : 0;
+        const stageTop = stage ? stage.offsetTop : 0;
+
+        const scaledCenterX = centerX * zoomScale;
+        const scaledCenterY = centerY * zoomScale;
+
+        const targetScrollLeft = stageLeft + scaledCenterX - (wrapper.clientWidth / 2);
+        const targetScrollTop = stageTop + scaledCenterY - (wrapper.clientHeight / 2);
+
+        wrapper.scrollTo({
+            left: Math.max(0, targetScrollLeft),
+            top: Math.max(0, targetScrollTop),
+            behavior: "smooth"
+        });
+    }, 30);
 }
 
 // Requirement Filter Selector Toolbar

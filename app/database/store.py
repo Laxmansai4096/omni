@@ -65,3 +65,33 @@ def list_recent_documents_from_db(limit: int = 20) -> list:
             "created_at": r[4]
         })
     return res
+
+def update_document_element_in_db(doc_id: str, element_id: str, payload: dict) -> bool:
+    doc = get_document_from_db(doc_id)
+    if not doc:
+        return False
+    
+    updated = False
+    new_text = payload.get("text_content")
+    table_data = payload.get("table_data")
+    kv_pair = payload.get("key_value_pair")
+    chart_summary = payload.get("chart_summary")
+
+    for page in doc.get("pages", []):
+        for elem in page.get("elements", []):
+            if elem.get("id") == element_id:
+                if new_text is not None:
+                    elem["text_content"] = new_text
+                if table_data is not None:
+                    elem["table_data"] = table_data
+                if kv_pair is not None:
+                    elem["key_value_pair"] = kv_pair
+                if chart_summary is not None:
+                    elem["chart_summary"] = chart_summary
+                updated = True
+                break
+
+    if updated:
+        save_document_to_db(doc_id, doc.get("file_name", "document.png"), doc.get("file_size_bytes", 0), doc.get("source_type", "upload"), doc)
+    return updated
+

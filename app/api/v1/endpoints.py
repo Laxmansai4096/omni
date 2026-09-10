@@ -8,13 +8,14 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from app.models.schema import DocumentAnalysisResult, ElementCategory
+from app.models.schema import DocumentAnalysisResult, ElementCategory, TranslationRequest, TranslationResponse
 from app.services.azure_doc_intel import AzureDocIntelService
 from app.services.azure_storage import storage_service
 from app.services.azure_service_bus import service_bus_service
+from app.services.azure_translator import translator_service, SUPPORTED_LANGUAGES
 from app.services.telemetry import trace_span
 from app.services.sample_generator import get_sample_document, build_sample_expense_report, build_sample_financial_report
-from app.database.store import save_document_to_db, get_document_from_db, list_recent_documents_from_db
+from app.database.store import save_document_to_db, get_document_from_db, list_recent_documents_from_db, update_document_element_in_db
 from app.database.job_store import create_job, get_job, get_job_result, list_recent_jobs
 from app.config import settings
 
@@ -35,6 +36,7 @@ async def health_check():
         "version": settings.VERSION,
         "environment": "azure-fde-production",
         "azure_doc_intel_configured": doc_intel_service.is_configured,
+        "azure_translator_configured": translator_service.is_configured,
         "azure_openai_configured": bool(settings.AZURE_OPENAI_ENDPOINT and settings.AZURE_OPENAI_KEY),
         "azure_service_bus_configured": service_bus_service.is_configured,
         "azure_storage_configured": storage_service.is_configured,
@@ -43,6 +45,57 @@ async def health_check():
         "max_concurrent_users_limit": settings.MAX_CONCURRENT_USERS,
         "demo_mode": settings.DEMO_MODE
     }
+
+@router.post("/translate", response_model=TranslationResponse)
+async def translate_text_endpoint(req: TranslationRequest):
+    """
+    Azure AI Translator Endpoint:
+    Translates extracted text into one of 5 supported languages:
+    Hindi ('hi'), Telugu ('te'), French ('fr'), German ('de'), Kannada ('kn').
+    """
+    try:
+        res = translator_service.translate_text(
+            text=req.text,
+            target_language=req.target_language,
+            source_language=req.source_language or "en"
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/documents/{doc_id}/elements/{element_id}")
+async def update_element_text(doc_id: str, element_id: str, payload: Dict[str, Any]):
+    """
+    Updates the extracted text content or structured data (table_data, key_value_pair, chart_summary)
+    of a specific element in active cache and SQLite database.
+    """
+    new_text = payload.get("text_content")
+    table_data = payload.get("table_data")
+    kv_pair = payload.get("key_value_pair")
+    chart_summary = payload.get("chart_summary")
+
+    # Update cache if available
+    if doc_id in DOCUMENT_CACHE:
+        doc = DOCUMENT_CACHE[doc_id]
+        for page in doc.pages:
+            for elem in page.elements:
+                if elem.id == element_id:
+                    if new_text is not None:
+                        elem.text_content = new_text
+                    if table_data is not None and elem.table_data:
+                        if isinstance(table_data, dict):
+                            elem.table_data.markdown_table = table_data.get("markdown_table", elem.table_data.markdown_table)
+                    if kv_pair is not None:
+                        elem.key_value_pair = kv_pair
+                    if chart_summary is not None:
+                        elem.chart_summary = chart_summary
+                    break
+
+    # Persist in SQLite DB
+    update_document_element_in_db(doc_id, element_id, payload)
+    return {"status": "success", "document_id": doc_id, "element_id": element_id, "payload": payload}
+
+
 
 # ==========================================
 # ENTERPRISE ASYNC SERVICE BUS JOB PIPELINE

@@ -188,28 +188,26 @@
                         <div class="canvas-actions">
                             <span class="badge" id="pageIndicator">Page 1 of 1</span>
                             
-                            <!-- Pan / Drag Tool Toggle -->
-                            <button class="btn-sm btn-secondary" id="panToolBtn" onclick="togglePanTool()" title="Toggle Pan / Hand Drag Tool"><i class="fa-solid fa-hand"></i> Pan Mode</button>
-                            
-                            <div class="zoom-controls-group">
-                                <button class="btn-sm btn-secondary" onclick="zoomCanvas(-0.15)" title="Zoom Out (-)"><i class="fa-solid fa-minus"></i></button>
-                                <select id="zoomPresetSelect" class="zoom-preset-select" onchange="handleZoomPresetChange(this.value)">
-                                    <option value="fit">Fit Page</option>
-                                    <option value="fit-width">Fit Width</option>
-                                    <option value="0.5">50%</option>
-                                    <option value="0.75">75%</option>
-                                    <option value="1.0">100% (Actual)</option>
-                                    <option value="1.25">125%</option>
-                                    <option value="1.5">150%</option>
-                                    <option value="2.0">200%</option>
-                                    <option value="3.0">300%</option>
-                                </select>
-                                <button class="btn-sm btn-secondary" onclick="zoomCanvas(0.15)" title="Zoom In (+)"><i class="fa-solid fa-plus"></i></button>
+                            <!-- Standard Enterprise Zoom Control Bar -->
+                            <div class="zoom-toolbar-modern">
+                                <button class="zoom-btn" onclick="zoomCanvas(-0.15)" title="Zoom Out (-)"><i class="fa-solid fa-minus"></i></button>
+                                <span class="zoom-badge-text" id="zoomLevelBadge" onclick="fitImageToViewport(true)" title="Click to Reset to Fit Page">100%</span>
+                                <button class="zoom-btn" onclick="zoomCanvas(0.15)" title="Zoom In (+)"><i class="fa-solid fa-plus"></i></button>
+                                <button class="zoom-btn btn-reset-zoom" onclick="fitImageToViewport(true)" title="Reset Zoom to Fit Page"><i class="fa-solid fa-compress"></i> Fit Page</button>
                             </div>
 
-                            <button class="btn-sm btn-secondary" onclick="fitWidthToViewport()" title="Fit Image to Viewport Width"><i class="fa-solid fa-arrows-left-right"></i> Fit Width</button>
-                            <button class="btn-sm btn-secondary" onclick="fitImageToViewport(true)" title="Fit Entire Page to Viewport"><i class="fa-solid fa-compress"></i> Fit Page</button>
-                            <button class="btn-sm btn-secondary" onclick="toggleFullscreenCanvas()" title="Fullscreen Image Playground"><i class="fa-solid fa-expand"></i> Fullscreen</button>
+                            <!-- Azure AI Translator Dropdown Toolbar -->
+                            <div class="translator-toolbar-modern">
+                                <i class="fa-solid fa-language translator-icon"></i>
+                                <select id="targetLangSelect" class="translator-select" onchange="handleLanguageChange(this.value)" title="Translate Extracted Text">
+                                    <option value="none">Translate To...</option>
+                                    <option value="hi">Hindi (हिन्दी)</option>
+                                    <option value="te">Telugu (తెలుగు)</option>
+                                    <option value="fr">French (Français)</option>
+                                    <option value="de">German (Deutsch)</option>
+                                    <option value="kn">Kannada (ಕನ್ನಡ)</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 

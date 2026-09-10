@@ -93,3 +93,18 @@ class DocumentAnalysisResult(BaseModel):
     pages: List[DocumentPage]
     summary: AnalysisSummary
     observability: Optional[AIObservabilitySummary] = None
+
+class TranslationRequest(BaseModel):
+    text: str
+    target_language: str
+    source_language: Optional[str] = "en"
+
+class TranslationResponse(BaseModel):
+    original_text: str
+    translated_text: str
+    source_language: str
+    target_language: str
+    target_language_name: str
+    status: str
+    is_fallback: bool = False
+
