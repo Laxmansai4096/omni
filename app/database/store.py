@@ -33,6 +33,13 @@ def save_document_to_db(doc_id: str, file_name: str, file_size: int, source_type
     conn.commit()
     conn.close()
 
+    try:
+        from app.services.azure_storage import storage_service
+        if storage_service.is_configured:
+            storage_service.upload_document(json.dumps(result_dict).encode("utf-8"), f"{doc_id}.json", f"_documents_store/{doc_id}")
+    except Exception:
+        pass
+
 def get_document_from_db(doc_id: str) -> dict:
     init_db()
     conn = sqlite3.connect(DB_PATH)
@@ -42,7 +49,28 @@ def get_document_from_db(doc_id: str) -> dict:
     conn.close()
     if row:
         return json.loads(row[0])
+
+    try:
+        from app.services.azure_storage import storage_service
+        if storage_service.is_configured:
+            blob_bytes = storage_service.download_document(f"_documents_store/{doc_id}/{doc_id}.json")
+            if blob_bytes:
+                res_dict = json.loads(blob_bytes.decode("utf-8"))
+                # Save into local DB cache
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO documents (document_id, file_name, file_size_bytes, source_type, created_at, json_data)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (doc_id, res_dict.get("file_name", "doc.png"), 0, "blob_cache", time.time(), json.dumps(res_dict)))
+                conn.commit()
+                conn.close()
+                return res_dict
+    except Exception:
+        pass
+
     return None
+
 
 def list_recent_documents_from_db(limit: int = 20) -> list:
     init_db()
