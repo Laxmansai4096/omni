@@ -116,5 +116,115 @@ class AzureServiceBusService:
         target_queue = queue_name or self._jobs_queue_name
         return self._client.get_queue_receiver(target_queue, max_wait_time=5)
 
+    def get_queue_stats(self) -> Dict[str, Any]:
+        """Queries queue lengths and dead-letter queue counts."""
+        if not self.is_configured:
+            return {
+                "configured": False,
+                "jobs_queue": 0,
+                "results_queue": 0,
+                "dead_letter_queue": 0
+            }
+
+        stats = {
+            "configured": True,
+            "jobs_queue": 0,
+            "results_queue": 0,
+            "dead_letter_queue": 0
+        }
+        try:
+            with self._client.get_queue_receiver(self._jobs_queue_name, max_wait_time=2) as r1:
+                msgs1 = r1.peek_messages(max_message_count=50)
+                stats["jobs_queue"] = len(msgs1)
+        except Exception as e:
+            logger.warning(f"[ServiceBus] Error peeking {self._jobs_queue_name}: {e}")
+
+        try:
+            with self._client.get_queue_receiver(self._results_queue_name, max_wait_time=2) as r2:
+                msgs2 = r2.peek_messages(max_message_count=50)
+                stats["results_queue"] = len(msgs2)
+        except Exception as e:
+            logger.warning(f"[ServiceBus] Error peeking {self._results_queue_name}: {e}")
+
+        try:
+            from azure.servicebus import ServiceBusSubQueue
+            with self._client.get_queue_receiver(self._jobs_queue_name, sub_queue=ServiceBusSubQueue.DEAD_LETTER, max_wait_time=2) as r3:
+                msgs3 = r3.peek_messages(max_message_count=50)
+                stats["dead_letter_queue"] = len(msgs3)
+        except Exception as e:
+            logger.warning(f"[ServiceBus] Error peeking DLQ for {self._jobs_queue_name}: {e}")
+
+        return stats
+
+    def flush_queues(self) -> Dict[str, Any]:
+        """Drains and purges all waiting messages from jobs, results, and dead-letter queues."""
+        if not self.is_configured:
+            return {
+                "status": "not_configured",
+                "flushed_jobs": 0,
+                "flushed_results": 0,
+                "flushed_dead_letter": 0
+            }
+
+        flushed = {
+            "status": "success",
+            "flushed_jobs": 0,
+            "flushed_results": 0,
+            "flushed_dead_letter": 0
+        }
+
+        # 1. Drain jobs queue
+        try:
+            with self._client.get_queue_receiver(self._jobs_queue_name, max_wait_time=3) as receiver:
+                while True:
+                    msgs = receiver.receive_messages(max_message_count=20, max_wait_time=3)
+                    if not msgs:
+                        break
+                    for m in msgs:
+                        try:
+                            receiver.complete_message(m)
+                            flushed["flushed_jobs"] += 1
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.error(f"[ServiceBus] Error flushing jobs queue: {e}")
+
+        # 2. Drain results queue
+        try:
+            with self._client.get_queue_receiver(self._results_queue_name, max_wait_time=3) as receiver:
+                while True:
+                    msgs = receiver.receive_messages(max_message_count=20, max_wait_time=3)
+                    if not msgs:
+                        break
+                    for m in msgs:
+                        try:
+                            receiver.complete_message(m)
+                            flushed["flushed_results"] += 1
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.error(f"[ServiceBus] Error flushing results queue: {e}")
+
+        # 3. Drain dead letter queue
+        try:
+            from azure.servicebus import ServiceBusSubQueue
+            with self._client.get_queue_receiver(self._jobs_queue_name, sub_queue=ServiceBusSubQueue.DEAD_LETTER, max_wait_time=3) as receiver:
+                while True:
+                    msgs = receiver.receive_messages(max_message_count=20, max_wait_time=3)
+                    if not msgs:
+                        break
+                    for m in msgs:
+                        try:
+                            receiver.complete_message(m)
+                            flushed["flushed_dead_letter"] += 1
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.error(f"[ServiceBus] Error flushing DLQ: {e}")
+
+        logger.info(f"[ServiceBus] Flushed queues: {flushed}")
+        return flushed
+
 # Singleton Service Bus client
 service_bus_service = AzureServiceBusService()
+

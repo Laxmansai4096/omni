@@ -125,6 +125,9 @@ class DocumentQueueWorker:
                 save_job_result(job_id, result_dict)
                 save_document_to_db(job_id, file_name, len(file_bytes), "async_queue", result_dict)
 
+                # Set job status to COMPLETED (100%) so SSE streaming and UI polling resolve immediately
+                update_job_stage(job_id, status="COMPLETED", progress_pct=100, current_stage="PROCESSING_COMPLETED")
+
                 # Publish completion notification
                 service_bus_service.publish_result(job_id, "COMPLETED", {
                     "pages": result.summary.total_pages,
@@ -134,7 +137,7 @@ class DocumentQueueWorker:
 
                 # Complete message from queue
                 receiver.complete_message(msg)
-                logger.info(f"[Worker] Successfully processed job '{job_id}' ({result.summary.total_elements} elements).")
+                logger.info(f"[Worker] Successfully processed and marked COMPLETED for job '{job_id}' ({result.summary.total_elements} elements).")
 
             except Exception as e:
                 err_str = str(e)

@@ -18,6 +18,8 @@ let panStartScrollLeft = 0, panStartScrollTop = 0;
 document.addEventListener("DOMContentLoaded", () => {
     loadSampleDocument("sample-expense-001");
     loadHistoryDropdown();
+    fetchQueueStats();
+    fetchPipelineHealth(null, false);
 
     window.addEventListener("resize", () => {
         if (!userZoomLocked && zoomScale <= 1.0) fitImageToViewport(false);
@@ -2105,15 +2107,104 @@ function switchInspectorTab(tabName) {
     });
 }
 
+// Service Bus Queue Telemetry & Flush Handlers
+let cachedQueueStats = { jobs_queue: 0, results_queue: 0, dead_letter_queue: 0, configured: true };
+let cachedComponentsHealth = null;
+
+async function fetchQueueStats() {
+    try {
+        const resp = await fetch("/api/v1/telemetry/queues/status");
+        if (resp.ok) {
+            cachedQueueStats = await resp.json();
+            updateQueueStatusPills();
+        }
+    } catch (e) {
+        console.warn("Error fetching queue stats:", e);
+    }
+}
+
+function updateQueueStatusPills() {
+    const jobsCountEl = document.querySelectorAll(".jobs-queue-count");
+    const resultsCountEl = document.querySelectorAll(".results-queue-count");
+    const dlqCountEl = document.querySelectorAll(".dlq-queue-count");
+
+    jobsCountEl.forEach(el => el.textContent = `${cachedQueueStats.jobs_queue || 0} msgs`);
+    resultsCountEl.forEach(el => el.textContent = `${cachedQueueStats.results_queue || 0} msgs`);
+    dlqCountEl.forEach(el => el.textContent = `${cachedQueueStats.dead_letter_queue || 0} msgs`);
+}
+
+async function flushServiceBusQueueAction(event) {
+    if (event) event.stopPropagation();
+    const btn = event ? event.currentTarget : null;
+    const origHtml = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Flushing Service Bus Queues...`;
+    }
+
+    try {
+        const resp = await fetch("/api/v1/telemetry/queues/flush", { method: "POST" });
+        if (!resp.ok) {
+            throw new Error("Failed to flush queues");
+        }
+        const data = await resp.json();
+        await fetchQueueStats();
+        
+        const total = (data.flushed_jobs || 0) + (data.flushed_results || 0) + (data.flushed_dead_letter || 0);
+        alert(`Service Bus Queues Flushed Successfully!\n• Jobs Queue Flushed: ${data.flushed_jobs || 0}\n• Results Queue Flushed: ${data.flushed_results || 0}\n• Dead-Letter Queue Flushed: ${data.flushed_dead_letter || 0}\nTotal Messages Purged: ${total}`);
+        
+        renderAIObservabilityPanel();
+    } catch (err) {
+        alert(`Error flushing Service Bus: ${err.message}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml || `<i class="fa-solid fa-broom"></i> Flush Service Bus Queues`;
+        }
+    }
+}
+
+// Live Pipeline Health Check across all Azure Microservices & Components
+async function fetchPipelineHealth(event, showToast = false) {
+    if (event) event.stopPropagation();
+    const btns = document.querySelectorAll(".btn-health-check, #runPipelineHealthBtn");
+    btns.forEach(b => {
+        b.disabled = true;
+        b.innerHTML = `<i class="fa-solid fa-heart-pulse fa-beat" style="color:#34d399;"></i> Probing Microservices...`;
+    });
+
+    try {
+        const resp = await fetch("/api/v1/telemetry/health/components");
+        if (!resp.ok) throw new Error("Health check probe failed");
+        cachedComponentsHealth = await resp.json();
+        renderAIObservabilityPanel();
+
+        if (showToast) {
+            const healthyCount = (cachedComponentsHealth.components || []).filter(c => c.status === "HEALTHY").length;
+            const total = (cachedComponentsHealth.components || []).length;
+            alert(`Azure Pipeline Health Check Complete!\nOverall Status: ${cachedComponentsHealth.overall_status}\nOperational Components: ${healthyCount}/${total}\nTotal Probe Latency: ${cachedComponentsHealth.total_latency_ms} ms`);
+        }
+    } catch (e) {
+        console.warn("Pipeline health check error:", e);
+        if (showToast) alert(`Pipeline Health Check Failed: ${e.message}`);
+    } finally {
+        btns.forEach(b => {
+            b.disabled = false;
+            b.innerHTML = `<i class="fa-solid fa-heart-pulse"></i> Re-check Pipeline Health`;
+        });
+    }
+}
+
 // Toggle AI Observability & Traces Modal
 function toggleObservabilityModal() {
     const modal = document.getElementById("observabilityModal");
     if (!modal) return;
-    if (modal.style.display === "none" || !modal.style.display) {
-        modal.style.display = "flex";
+    const isHidden = modal.style.display === "none" || !modal.style.display;
+    modal.style.display = isHidden ? "flex" : "none";
+    if (isHidden) {
+        fetchQueueStats();
+        if (!cachedComponentsHealth) fetchPipelineHealth(null, false);
         renderAIObservabilityPanel();
-    } else {
-        modal.style.display = "none";
     }
 }
 
@@ -2124,9 +2215,16 @@ function renderAIObservabilityPanel() {
 
     const fdeArchitectureBannerHtml = `
         <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
                 <span style="font-size: 0.85rem; font-weight: 700; color: #34d399;"><i class="fa-solid fa-cloud-bolt"></i> Azure Enterprise FDE Architecture Status: ACTIVE</span>
-                <span class="badge badge-servicebus"><i class="fa-solid fa-satellite-dish"></i> Service Bus Enqueue Ready</span>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button class="btn-health-check" onclick="fetchPipelineHealth(event, true)" title="Check live health of all Azure components">
+                        <i class="fa-solid fa-heart-pulse"></i> Check Pipeline Health
+                    </button>
+                    <button class="btn-flush-queue" onclick="flushServiceBusQueueAction(event)" title="Drain and wipe all messages from ai-jobs-queue & results queue">
+                        <i class="fa-solid fa-broom"></i> Flush Service Bus Queues
+                    </button>
+                </div>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.78rem; color: var(--text-muted);">
                 <div><i class="fa-solid fa-inbox" style="color:#60a5fa;"></i> <strong>Service Bus:</strong> <code>sb-explore-ai/ai-jobs-queue</code></div>
@@ -2134,12 +2232,89 @@ function renderAIObservabilityPanel() {
                 <div><i class="fa-solid fa-chart-line" style="color:#ec4899;"></i> <strong>App Insights:</strong> <code>func-ai-microservice-65064</code></div>
                 <div><i class="fa-solid fa-shield-halved" style="color:#a78bfa;"></i> <strong>Distributed Trace:</strong> <code>W3C traceparent injected</code></div>
             </div>
+            <div class="queue-stats-strip">
+                <span class="queue-pill"><i class="fa-solid fa-inbox" style="color:#38bdf8;"></i> Jobs Queue: <strong class="jobs-queue-count">${cachedQueueStats.jobs_queue || 0} msgs</strong></span>
+                <span class="queue-pill"><i class="fa-solid fa-square-check" style="color:#34d399;"></i> Results Queue: <strong class="results-queue-count">${cachedQueueStats.results_queue || 0} msgs</strong></span>
+                <span class="queue-pill"><i class="fa-solid fa-triangle-exclamation" style="color:#f87171;"></i> Dead-Letter: <strong class="dlq-queue-count">${cachedQueueStats.dead_letter_queue || 0} msgs</strong></span>
+                <span style="font-size:0.7rem; color:var(--text-muted); margin-left:auto;"><i class="fa-solid fa-arrows-rotate" style="cursor:pointer;" onclick="fetchQueueStats()" title="Refresh Queue Stats"></i> Refresh</span>
+            </div>
         </div>
     `;
+
+    // Construct Visual Health Matrix Section
+    let healthSectionHtml = "";
+    if (cachedComponentsHealth && cachedComponentsHealth.components) {
+        const h = cachedComponentsHealth;
+        const isAllOk = h.overall_status === "HEALTHY";
+        const statusBadge = isAllOk 
+            ? `<span class="badge-health badge-health-ok"><i class="fa-solid fa-circle-check"></i> ALL COMPONENTS HEALTHY (${h.total_latency_ms}ms)</span>`
+            : `<span class="badge-health badge-health-warn"><i class="fa-solid fa-triangle-exclamation"></i> DEGRADED (${h.total_latency_ms}ms)</span>`;
+
+        const cardsHtml = h.components.map(comp => {
+            const isOk = comp.status === "HEALTHY";
+            const badgeClass = isOk ? "badge-health-ok" : (comp.status === "UNCONFIGURED" || comp.status === "OPTIONAL_STANDBY" ? "badge-health-warn" : "badge-health-err");
+            const badgeIcon = isOk ? "fa-circle-check" : "fa-triangle-exclamation";
+
+            return `
+                <div class="component-health-card">
+                    <div class="component-card-top">
+                        <div class="component-title-box">
+                            <span class="component-icon" style="color:${comp.color || '#60a5fa'};"><i class="fa-solid ${comp.icon}"></i></span>
+                            <div>
+                                <div class="component-name">${escapeHtml(comp.name)}</div>
+                                <div class="component-cat">${escapeHtml(comp.category)}</div>
+                            </div>
+                        </div>
+                        <span class="badge-health ${badgeClass}"><i class="fa-solid ${badgeIcon}"></i> ${comp.status}</span>
+                    </div>
+                    <div style="font-size:0.75rem; color:#e2e8f0; line-height:1.4;">${escapeHtml(comp.details)}</div>
+                    <div class="component-card-bottom">
+                        <span title="${escapeHtml(comp.endpoint)}" style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><i class="fa-solid fa-link"></i> ${escapeHtml(comp.endpoint)}</span>
+                        <span><i class="fa-solid fa-bolt" style="color:#fbbf24;"></i> ${comp.latency_ms} ms</span>
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        healthSectionHtml = `
+            <div class="pipeline-health-section">
+                <div class="pipeline-health-header">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:0.85rem; font-weight:700; color:#f8fafc;"><i class="fa-solid fa-server" style="color:#38bdf8;"></i> Azure Pipeline Microservices Health Matrix</span>
+                        ${statusBadge}
+                    </div>
+                    <button class="btn-health-check" onclick="fetchPipelineHealth(event, true)" title="Trigger live probe against all Azure microservices in pipeline">
+                        <i class="fa-solid fa-heart-pulse"></i> Re-check Health
+                    </button>
+                </div>
+                <div class="pipeline-health-grid">
+                    ${cardsHtml}
+                </div>
+            </div>
+        `;
+    } else {
+        healthSectionHtml = `
+            <div class="pipeline-health-section">
+                <div class="pipeline-health-header">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:0.85rem; font-weight:700; color:#f8fafc;"><i class="fa-solid fa-server" style="color:#38bdf8;"></i> Azure Pipeline Microservices Health Matrix</span>
+                        <span class="badge-health badge-health-ok"><i class="fa-solid fa-wave-square"></i> Probe Ready</span>
+                    </div>
+                    <button class="btn-health-check" onclick="fetchPipelineHealth(event, true)" title="Trigger live probe against all Azure microservices in pipeline">
+                        <i class="fa-solid fa-heart-pulse"></i> Check Full Pipeline Health
+                    </button>
+                </div>
+                <div style="text-align:center; padding:15px; color:var(--text-muted); font-size:0.8rem;">
+                    Click <strong>'Check Full Pipeline Health'</strong> to run real-time latency probes and connection validation across Document Intel, OpenAI Vision, Translator, Service Bus, Blob Storage, and Async Worker.
+                </div>
+            </div>
+        `;
+    }
 
     if (!currentDocumentData || !currentDocumentData.observability) {
         const initialHtml = `
             ${fdeArchitectureBannerHtml}
+            ${healthSectionHtml}
             <div style="text-align: center; padding: 25px 20px; color: var(--text-muted); background: #111827; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 14px;">
                 <i class="fa-solid fa-microchip" style="font-size: 1.8rem; margin-bottom: 8px; color: #60a5fa;"></i>
                 <h4 style="color: var(--text-main); font-size: 0.95rem; margin-bottom: 4px;">Telemetry Engine Ready</h4>
@@ -2170,6 +2345,7 @@ function renderAIObservabilityPanel() {
 
     let html = `
         ${fdeArchitectureBannerHtml}
+        ${healthSectionHtml}
         <div class="telemetry-kpi-grid">
             <div class="kpi-card">
                 <span class="kpi-label"><i class="fa-solid fa-stopwatch"></i> Pipeline Latency</span>
