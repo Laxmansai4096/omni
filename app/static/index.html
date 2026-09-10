@@ -49,6 +49,9 @@
                     <div class="pane-title">
                         <i class="fa-solid fa-cloud-arrow-up"></i> Image Upload & Controls
                     </div>
+                    <button class="btn-collapse-sidebar" id="toggleLeftPaneBtn" onclick="toggleLeftPane()" title="Collapse Left Panel">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
                 </div>
 
                 <div class="pane-body scrollable">
@@ -207,6 +210,8 @@
                                     <option value="de">German (Deutsch)</option>
                                     <option value="kn">Kannada (ಕನ್ನಡ)</option>
                                 </select>
+                                <button class="btn-replace-all-canvas" id="replaceAllCanvasBtn" onclick="toggleAllCanvasReplacements()" title="Toggle between replacing all with translated text and restoring to original"><i class="fa-solid fa-wand-magic-sparkles"></i> Replace All on Canvas</button>
+                                <button class="btn-reset-canvas" onclick="resetDocumentCanvas()" title="Reset replaced text back to pristine original image"><i class="fa-solid fa-rotate-left"></i> Reset Canvas</button>
                             </div>
                         </div>
                     </div>

@@ -499,15 +499,17 @@ function fitImageToViewport(force = false) {
     const page = currentDocumentData.pages[currentPageIndex];
     if (!page) return;
 
-    const availW = wrapper.clientWidth;
-    const availH = wrapper.clientHeight;
+    // Use inset padding so image is cleanly framed within middle workspace and never clips/goes behind sidebars
+    const paddingOffset = 32;
+    const availW = Math.max(100, wrapper.clientWidth - paddingOffset);
+    const availH = Math.max(100, wrapper.clientHeight - paddingOffset);
     const pageW = page.width || 1000;
     const pageH = page.height || 1300;
 
     if (availW > 0 && availH > 0 && pageW > 0 && pageH > 0) {
         const scaleX = availW / pageW;
         const scaleY = availH / pageH;
-        // Exact fit: scale such that at least 2 borders (vertical or horizontal or both) touch the edges of the zoom workspace
+        // Exact fit: scale such that image fits completely within the middle workspace
         zoomScale = Math.min(scaleX, scaleY);
         applyZoomScale();
         wrapper.scrollLeft = 0;
@@ -621,6 +623,8 @@ function renderCanvasPage(page) {
         const bgImg = new Image();
         bgImg.onload = function() {
             ctx.drawImage(bgImg, 0, 0, width, height);
+            reapplyCanvasReplacements(page);
+            updateReplaceAllButtonUI();
             requestAnimationFrame(() => applyZoomScale());
         };
         bgImg.src = page.image_url;
@@ -636,6 +640,8 @@ function renderCanvasPage(page) {
         ctx.fillStyle = "#94a3b8";
         ctx.font = "bold 20px Inter, sans-serif";
         ctx.fillText(`OMNIDOC AI ANALYZED DOCUMENT - PAGE ${page.page_number}`, 40, 50);
+        reapplyCanvasReplacements(page);
+        updateReplaceAllButtonUI();
         requestAnimationFrame(() => applyZoomScale());
     }
 
@@ -914,12 +920,12 @@ function handleLanguageChange(lang) {
 
 // Fetch Translation for an Extracted Element from Azure AI Translator API
 async function fetchElementTranslation(elem, targetLang) {
-    if (!elem || targetLang === 'none') return;
+    if (!elem || targetLang === 'none') return null;
     const cacheKey = `${elem.id}_${targetLang}`;
     
     if (elementTranslationsCache[cacheKey]) {
         updateElementTranslationUI(elem.id, elementTranslationsCache[cacheKey]);
-        return;
+        return elementTranslationsCache[cacheKey];
     }
 
     let textToTranslate = elem.text_content || "";
@@ -933,7 +939,7 @@ async function fetchElementTranslation(elem, targetLang) {
         }
     }
 
-    if (!textToTranslate.trim()) return;
+    if (!textToTranslate.trim()) return null;
 
     try {
         const resp = await fetch("/api/v1/translate", {
@@ -950,6 +956,7 @@ async function fetchElementTranslation(elem, targetLang) {
         const result = await resp.json();
         elementTranslationsCache[cacheKey] = result;
         updateElementTranslationUI(elem.id, result);
+        return result;
     } catch (e) {
         console.error("Translation error:", e);
         const errResult = {
@@ -959,6 +966,368 @@ async function fetchElementTranslation(elem, targetLang) {
             status: "error"
         };
         updateElementTranslationUI(elem.id, errResult);
+        return errResult;
+    }
+}
+
+// Global Map for active canvas text replacements: { elemId -> { text, renderedText, isTruncated, pageIndex } }
+let replacedCanvasTexts = {};
+
+// Replace Text on Canvas with Multi-Line Text Wrapping & Smart ...TBC Truncation
+function replaceTextOnCanvas(elemId, textToReplace, event, triggerZoom = true) {
+    if (event) event.stopPropagation();
+    if (!currentDocumentData) return;
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page) return;
+
+    const elem = (page.elements || []).find(e => e.id === elemId);
+    if (!elem || !elem.bounding_box) return;
+
+    // Visual image/figure/chart regions should NEVER be replaced on canvas (they stay as pristine original image)
+    if (elem.category === 'figure' || elem.category === 'image' || elem.category === 'chart') {
+        if (triggerZoom !== false) {
+            selectElement(elemId);
+        }
+        return;
+    }
+
+    const canvas = document.getElementById("documentCanvas");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+
+    const bbox = elem.bounding_box;
+    const cw = canvas.width;
+    const ch = canvas.height;
+
+    let x = bbox.x * cw;
+    let y = bbox.y * ch;
+    let w = bbox.width * cw;
+    let h = bbox.height * ch;
+
+    w = Math.max(25, w);
+    h = Math.max(16, h);
+
+    // 1. Wipe original text box region with clean opaque white fill
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+
+    // 2. Multi-Line Text Wrapping Engine with Dynamic Font Sizing to match Original Image Font
+    const padding = 4;
+    const maxW = w - (padding * 2);
+    const maxH = h - (padding * 2);
+
+    // Calculate dynamic font size matching original text height on the image
+    const origText = (elem.text_content || "").trim();
+    let estimatedOrigLines = 1;
+    if (origText.includes("\n")) {
+        estimatedOrigLines = Math.max(1, origText.split("\n").filter(l => l.trim()).length);
+    } else if (h > 40 && origText.length > 50) {
+        estimatedOrigLines = Math.max(1, Math.ceil((origText.length * 8) / Math.max(50, maxW)));
+    }
+
+    const estimatedLineHeight = maxH / estimatedOrigLines;
+    let fontSize = Math.floor(estimatedLineHeight * 0.72);
+
+    // Bounded bounds: small text min 12px, large headings up to 52px
+    if (h < 22) {
+        fontSize = Math.max(10, Math.floor(h * 0.65));
+    } else if (estimatedOrigLines === 1) {
+        fontSize = Math.min(52, Math.max(14, Math.floor(h * 0.68)));
+    } else {
+        fontSize = Math.min(36, Math.max(12, fontSize));
+    }
+
+    const lineHeight = Math.max(Math.floor(fontSize * 1.32), Math.floor(fontSize + 4));
+    const maxLines = Math.max(1, Math.floor(maxH / lineHeight));
+
+    ctx.font = `${fontSize}px "Inter", "Segoe UI", "Noto Sans", sans-serif`;
+    ctx.fillStyle = "#0f172a";
+    ctx.textBaseline = "top";
+
+    const cleanText = (textToReplace || "").trim();
+    const words = cleanText.split(/\s+/);
+    let lines = [];
+    let currentLine = "";
+    let isTruncated = false;
+
+    for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        const testLine = currentLine ? (currentLine + " " + word) : word;
+        const testWidth = ctx.measureText(testLine).width;
+
+        if (testWidth <= maxW) {
+            currentLine = testLine;
+        } else {
+            if (lines.length + 1 >= maxLines) {
+                // Reached max line capacity for this bounding box! Truncate and append ...TBC
+                isTruncated = true;
+                const tbcSuffix = " ...TBC";
+                let truncLine = currentLine ? (currentLine + " " + word) : word;
+                while (truncLine.length > 0 && ctx.measureText(truncLine + tbcSuffix).width > maxW) {
+                    truncLine = truncLine.slice(0, -1);
+                }
+                lines.push(truncLine.trim() + tbcSuffix);
+                currentLine = "";
+                break;
+            } else {
+                lines.push(currentLine);
+                currentLine = word;
+            }
+        }
+    }
+
+    if (currentLine && lines.length < maxLines) {
+        lines.push(currentLine);
+    } else if (currentLine && lines.length >= maxLines) {
+        isTruncated = true;
+        const tbcSuffix = " ...TBC";
+        let lastLine = lines[lines.length - 1] || currentLine;
+        while (lastLine.length > 0 && ctx.measureText(lastLine + tbcSuffix).width > maxW) {
+            lastLine = lastLine.slice(0, -1);
+        }
+        lines[lines.length - 1] = lastLine.trim() + tbcSuffix;
+    }
+
+    // 3. Render wrapped lines onto canvas
+    let curY = y + padding;
+    lines.forEach(lineText => {
+        if (curY + fontSize <= y + h) {
+            ctx.fillText(lineText, x + padding, curY);
+            curY += lineHeight;
+        }
+    });
+
+    // Save replacement state
+    replacedCanvasTexts[elemId] = {
+        text: textToReplace,
+        lines: lines,
+        isTruncated: isTruncated,
+        pageIndex: currentPageIndex,
+        fontSize: fontSize,
+        lineHeight: lineHeight
+    };
+
+    // Refresh UI badges & Auto-Zoom to replaced box on canvas image
+    if (currentTargetLanguage !== 'none' && elementTranslationsCache[`${elemId}_${currentTargetLanguage}`]) {
+        updateElementTranslationUI(elemId, elementTranslationsCache[`${elemId}_${currentTargetLanguage}`]);
+    }
+    updateReplaceAllButtonUI();
+    if (triggerZoom !== false) {
+        selectElement(elemId);
+    }
+}
+
+// Restore an individual bounding box back to pristine original text / image
+function restoreOriginalCanvasText(elemId, event) {
+    if (event) event.stopPropagation();
+    if (!currentDocumentData) return;
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page) return;
+
+    delete replacedCanvasTexts[elemId];
+
+    // Re-render canvas page with remaining replacements intact
+    renderCanvasPage(page);
+
+    // Update UI elements for this box and the global toolbar
+    if (currentTargetLanguage !== 'none' && elementTranslationsCache[`${elemId}_${currentTargetLanguage}`]) {
+        updateElementTranslationUI(elemId, elementTranslationsCache[`${elemId}_${currentTargetLanguage}`]);
+    }
+    updateReplaceAllButtonUI();
+    updateSvgOverlayHighlights();
+    selectElement(elemId);
+}// Re-apply saved canvas replacements after canvas redraws / zoom scale changes
+function reapplyCanvasReplacements(page) {
+    if (!page || !page.elements) return;
+    const canvas = document.getElementById("documentCanvas");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+
+    page.elements.forEach(elem => {
+        // Visual image/figure/chart regions should NEVER be replaced on canvas
+        if (elem.category === 'figure' || elem.category === 'image' || elem.category === 'chart') return;
+
+        const item = replacedCanvasTexts[elem.id];
+        if (item && item.pageIndex === currentPageIndex && item.lines) {
+            const bbox = elem.bounding_box;
+            if (!bbox) return;
+            const cw = canvas.width;
+            const ch = canvas.height;
+            let x = bbox.x * cw;
+            let y = bbox.y * ch;
+            let w = bbox.width * cw;
+            let h = bbox.height * ch;
+            w = Math.max(25, w);
+            h = Math.max(16, h);
+
+            const padding = 4;
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = "#cbd5e1";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, y, w, h);
+
+            const fontSize = item.fontSize || 14;
+            const lineHeight = item.lineHeight || Math.max(Math.floor(fontSize * 1.32), Math.floor(fontSize + 4));
+
+            ctx.font = `${fontSize}px "Inter", "Segoe UI", "Noto Sans", sans-serif`;
+            ctx.fillStyle = "#0f172a";
+            ctx.textBaseline = "top";
+
+            let curY = y + padding;
+            item.lines.forEach(lineText => {
+                if (curY + fontSize <= y + h) {
+                    ctx.fillText(lineText, x + padding, curY);
+                    curY += lineHeight;
+                }
+            });
+        }
+    });
+}
+
+// Update Replace All Button UI label & style dynamically
+function updateReplaceAllButtonUI() {
+    const btn = document.getElementById("replaceAllCanvasBtn") || document.querySelector(".btn-replace-all-canvas");
+    if (!btn) return;
+    const page = currentDocumentData ? currentDocumentData.pages[currentPageIndex] : null;
+    if (!page) return;
+
+    const hasAnyReplacement = Object.keys(replacedCanvasTexts).some(k => replacedCanvasTexts[k] && replacedCanvasTexts[k].pageIndex === currentPageIndex);
+
+    if (hasAnyReplacement) {
+        btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i> Restore All to Original`;
+        btn.classList.add("btn-state-restore");
+        btn.title = "Restore all text boxes back to original image";
+    } else {
+        btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> Replace All on Canvas`;
+        btn.classList.remove("btn-state-restore");
+        btn.title = "Batch replace all text boxes with translated text";
+    }
+}
+
+// Toggle between replacing all text boxes on canvas with translation vs restoring original image
+async function toggleAllCanvasReplacements() {
+    const page = currentDocumentData ? currentDocumentData.pages[currentPageIndex] : null;
+    if (!page || !page.elements) return;
+
+    const hasAnyReplacement = Object.keys(replacedCanvasTexts).some(k => replacedCanvasTexts[k] && replacedCanvasTexts[k].pageIndex === currentPageIndex);
+
+    if (hasAnyReplacement) {
+        resetDocumentCanvas();
+    } else {
+        await replaceAllCanvasTexts();
+    }
+}
+
+// Reset Canvas to pristine original image state
+function resetDocumentCanvas() {
+    replacedCanvasTexts = {};
+    if (currentDocumentData && currentDocumentData.pages) {
+        renderCanvasPage(currentDocumentData.pages[currentPageIndex]);
+    }
+    updateSvgOverlayHighlights();
+    const allCards = document.querySelectorAll(".element-card");
+    allCards.forEach(c => c.classList.remove("highlight-sync"));
+    updateReplaceAllButtonUI();
+
+    // Refresh translation cards UI so "Restore Original" buttons update
+    if (currentDocumentData && currentDocumentData.pages) {
+        const page = currentDocumentData.pages[currentPageIndex];
+        (page.elements || []).forEach(elem => {
+            if (currentTargetLanguage !== 'none' && elementTranslationsCache[`${elem.id}_${currentTargetLanguage}`]) {
+                updateElementTranslationUI(elem.id, elementTranslationsCache[`${elem.id}_${currentTargetLanguage}`]);
+            }
+        });
+    }
+
+    fitImageToViewport(true);
+}
+
+// Batch Replace All Translated Text Boxes on Image Canvas at Once & Fit Page (Preserving Images)
+async function replaceAllCanvasTexts() {
+    if (!currentDocumentData || !currentDocumentData.pages) return;
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page || !page.elements) return;
+
+    const btn = document.getElementById("replaceAllCanvasBtn") || document.querySelector(".btn-replace-all-canvas");
+    const origHtml = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Replacing All Boxes...`;
+        btn.disabled = true;
+    }
+
+    try {
+        // Exclude figures, images, and charts so visual document illustrations remain unchanged
+        const textElements = (page.elements || []).filter(e => 
+            e.bounding_box && 
+            e.category !== 'figure' && 
+            e.category !== 'image' && 
+            e.category !== 'chart' && 
+            (e.text_content || e.table_data || e.key_value_pair)
+        );
+
+        // 1. Batch fetch translations for text elements on page if target language is selected
+        if (currentTargetLanguage !== 'none') {
+            const fetchPromises = textElements.map(elem => {
+                const cacheKey = `${elem.id}_${currentTargetLanguage}`;
+                if (!elementTranslationsCache[cacheKey]) {
+                    return fetchElementTranslation(elem, currentTargetLanguage);
+                }
+                return Promise.resolve(elementTranslationsCache[cacheKey]);
+            });
+            await Promise.all(fetchPromises);
+        }
+
+        // Reset active selection so focus isn't locked to a single box
+        activeElementId = null;
+
+        // 2. Execute in-place canvas text replacement for textual boxes
+        textElements.forEach(elem => {
+            let textToReplace = "";
+            
+            // Check if user has an edited translation input field in UI
+            const transInput = document.getElementById(`trans-input-${elem.id}`);
+            const editInput = document.getElementById(`edit-text-${elem.id}`);
+
+            if (transInput && transInput.value) {
+                textToReplace = transInput.value;
+            } else if (editInput && editInput.value) {
+                textToReplace = editInput.value;
+            } else if (currentTargetLanguage !== 'none') {
+                const cacheKey = `${elem.id}_${currentTargetLanguage}`;
+                if (elementTranslationsCache[cacheKey]) {
+                    const trans = elementTranslationsCache[cacheKey];
+                    textToReplace = trans.translated_text || "";
+                }
+            }
+
+            if (!textToReplace) {
+                textToReplace = elem.text_content || "";
+            }
+
+            if (textToReplace.trim()) {
+                replaceTextOnCanvas(elem.id, textToReplace, null, false);
+            }
+        });
+
+        // 3. Update overlay highlights & card selections
+        updateSvgOverlayHighlights();
+        const allCards = document.querySelectorAll(".element-card");
+        allCards.forEach(c => c.classList.remove("highlight-sync"));
+        updateReplaceAllButtonUI();
+
+        // 4. Automatically fit the full page image smoothly in viewport
+        fitImageToViewport(true);
+    } catch (err) {
+        console.error("Batch Replace All Error:", err);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            updateReplaceAllButtonUI();
+        }
     }
 }
 
@@ -967,16 +1336,51 @@ function updateElementTranslationUI(elemId, transResult) {
     const container = document.getElementById(`trans-container-${elemId}`);
     if (!container) return;
 
+    const page = currentDocumentData ? currentDocumentData.pages[currentPageIndex] : null;
+    const elem = page ? (page.elements || []).find(e => e.id === elemId) : null;
+    const isVisualElement = elem && (elem.category === 'figure' || elem.category === 'image' || elem.category === 'chart');
+
     const isFallback = transResult.is_fallback;
     const langName = transResult.target_language_name || "Translated";
+    const translatedText = transResult.translated_text || "";
+
+    const isReplaced = replacedCanvasTexts[elemId] ? true : false;
+    const isTruncated = replacedCanvasTexts[elemId] && replacedCanvasTexts[elemId].isTruncated;
+
+    let actionsHtml = "";
+    if (isVisualElement) {
+        actionsHtml = `
+            <span style="font-size:0.75rem; color:var(--text-muted); display:inline-flex; align-items:center; gap:5px;">
+                <i class="fa-solid fa-image" style="color:#a855f7;"></i> Visual image preserved (original on canvas)
+            </span>
+        `;
+    } else {
+        actionsHtml = `
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                <button class="btn-replace-canvas" onclick="replaceTextOnCanvas('${elemId}', document.getElementById('trans-input-${elemId}').value, event)" title="Replace text on image with translation">
+                    <i class="fa-solid fa-object-group"></i> ${isReplaced ? 'Re-apply to Image' : 'Replace Text on Image'}
+                </button>
+                ${isReplaced ? `
+                <button class="btn-restore-canvas" onclick="restoreOriginalCanvasText('${elemId}', event)" title="Restore original text on this image box">
+                    <i class="fa-solid fa-rotate-left"></i> Restore Original
+                </button>
+                ` : ''}
+            </div>
+        `;
+    }
 
     container.innerHTML = `
-        <div class="translated-card-section">
+        <div class="translated-card-section" onclick="event.stopPropagation()">
             <div class="translated-card-header">
                 <span><i class="fa-solid fa-language"></i> Azure Translator (${langName})</span>
-                <span class="translate-badge-chip">${isFallback ? '<i class="fa-solid fa-triangle-exclamation"></i> Fallback' : '<i class="fa-solid fa-bolt"></i> Live Azure AI'}</span>
+                <span class="translate-badge-chip">${isFallback ? 'Fallback' : '<i class="fa-solid fa-bolt"></i> Live Azure AI'}</span>
+                ${isTruncated ? '<span class="tbc-badge-chip" title="Text truncated on canvas with ..TBC"><i class="fa-solid fa-scissors"></i> ..TBC Truncated</span>' : ''}
             </div>
-            <div class="translated-card-text">${escapeHtml(transResult.translated_text)}</div>
+            <textarea class="editable-trans-input" id="trans-input-${elemId}" rows="3" placeholder="Edit translation...">${escapeHtml(translatedText)}</textarea>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; flex-wrap:wrap; gap:6px;">
+                ${actionsHtml}
+                <span style="font-size:0.7rem; color:var(--text-muted);">${translatedText.length} chars (Full text)</span>
+            </div>
         </div>
     `;
 }
@@ -1005,6 +1409,9 @@ function renderExtractedElementsList() {
     visibleElements.forEach(elem => {
         const card = document.createElement("div");
         const isSelected = (activeElementId === elem.id);
+        const isReplaced = replacedCanvasTexts[elem.id] ? true : false;
+        const isVisualElement = (elem.category === 'figure' || elem.category === 'image' || elem.category === 'chart');
+
         card.setAttribute("class", `element-card ${isSelected ? 'highlight-sync' : ''}`);
         card.setAttribute("id", `card-${elem.id}`);
         
@@ -1042,14 +1449,43 @@ function renderExtractedElementsList() {
             const cacheKey = `${elem.id}_${currentTargetLanguage}`;
             if (elementTranslationsCache[cacheKey]) {
                 const res = elementTranslationsCache[cacheKey];
+                const isTruncated = replacedCanvasTexts[elem.id] && replacedCanvasTexts[elem.id].isTruncated;
+
+                let actionsHtml = "";
+                if (isVisualElement) {
+                    actionsHtml = `
+                        <span style="font-size:0.75rem; color:var(--text-muted); display:inline-flex; align-items:center; gap:5px;">
+                            <i class="fa-solid fa-image" style="color:#a855f7;"></i> Visual image preserved (original on canvas)
+                        </span>
+                    `;
+                } else {
+                    actionsHtml = `
+                        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                            <button class="btn-replace-canvas" onclick="replaceTextOnCanvas('${elem.id}', document.getElementById('trans-input-${elem.id}').value, event)" title="Replace text on image with translation">
+                                <i class="fa-solid fa-object-group"></i> ${isReplaced ? 'Re-apply to Image' : 'Replace Text on Image'}
+                            </button>
+                            ${isReplaced ? `
+                            <button class="btn-restore-canvas" onclick="restoreOriginalCanvasText('${elem.id}', event)" title="Restore original text on this image box">
+                                <i class="fa-solid fa-rotate-left"></i> Restore Original
+                            </button>
+                            ` : ''}
+                        </div>
+                    `;
+                }
+
                 transHtml = `
                     <div class="trans-container" id="trans-container-${elem.id}">
-                        <div class="translated-card-section">
+                        <div class="translated-card-section" onclick="event.stopPropagation()">
                             <div class="translated-card-header">
                                 <span><i class="fa-solid fa-language"></i> Azure Translator (${res.target_language_name})</span>
                                 <span class="translate-badge-chip">${res.is_fallback ? 'Fallback' : '<i class="fa-solid fa-bolt"></i> Live Azure AI'}</span>
+                                ${isTruncated ? '<span class="tbc-badge-chip" title="Text truncated on canvas with ..TBC"><i class="fa-solid fa-scissors"></i> ..TBC Truncated</span>' : ''}
                             </div>
-                            <div class="translated-card-text">${escapeHtml(res.translated_text)}</div>
+                            <textarea class="editable-trans-input" id="trans-input-${elem.id}" rows="3" placeholder="Edit translation...">${escapeHtml(res.translated_text)}</textarea>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; flex-wrap:wrap; gap:6px;">
+                                ${actionsHtml}
+                                <span style="font-size:0.7rem; color:var(--text-muted);">${(res.translated_text || '').length} chars (Full text)</span>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -1094,6 +1530,23 @@ function renderExtractedElementsList() {
             }
         }
 
+        let editButtonsHtml = "";
+        if (isVisualElement) {
+            editButtonsHtml = `
+                <button class="btn btn-primary btn-sm" onclick="saveElementText('${elem.id}', event)"><i class="fa-solid fa-check"></i> Save Details</button>
+                <button class="btn btn-secondary btn-sm" onclick="toggleEditElement('${elem.id}', event)">Cancel</button>
+            `;
+        } else {
+            editButtonsHtml = `
+                <button class="btn btn-primary btn-sm" onclick="saveElementText('${elem.id}', event)"><i class="fa-solid fa-check"></i> Save & Translate</button>
+                <button class="btn-replace-canvas" onclick="replaceTextOnCanvas('${elem.id}', document.getElementById('edit-text-${elem.id}').value, event)" title="Replace text on image canvas"><i class="fa-solid fa-object-group"></i> ${isReplaced ? 'Re-apply to Image' : 'Replace Text on Canvas'}</button>
+                ${isReplaced ? `
+                <button class="btn-restore-canvas" onclick="restoreOriginalCanvasText('${elem.id}', event)" title="Restore original text on this image box"><i class="fa-solid fa-rotate-left"></i> Restore Original</button>
+                ` : ''}
+                <button class="btn-secondary btn-sm" onclick="toggleEditElement('${elem.id}', event)">Cancel</button>
+            `;
+        }
+
         card.innerHTML = `
             <div class="card-header">
                 <div class="card-title-group" style="display:flex; align-items:center; gap:8px;">
@@ -1112,9 +1565,8 @@ function renderExtractedElementsList() {
                 <div class="edit-panel" id="edit-panel-${elem.id}" style="display:none;" onclick="event.stopPropagation()">
                     <label style="font-size:0.75rem; font-weight:700; color:#38bdf8; display:block; margin-bottom:4px;"><i class="fa-solid ${editIcon}"></i> ${editLabel}</label>
                     <textarea class="edit-textarea" id="edit-text-${elem.id}">${escapeHtml(textToEdit)}</textarea>
-                    <div style="display:flex; gap:6px; margin-top:6px;">
-                        <button class="btn btn-primary btn-sm" onclick="saveElementText('${elem.id}', event)"><i class="fa-solid fa-check"></i> Save & Translate</button>
-                        <button class="btn btn-secondary btn-sm" onclick="toggleEditElement('${elem.id}', event)">Cancel</button>
+                    <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
+                        ${editButtonsHtml}
                     </div>
                 </div>
                 ${transHtml}
@@ -1162,6 +1614,27 @@ function selectElement(elemId) {
     }
 }
 
+// Toggle Left Control Sidebar (Collapsible Panel)
+function toggleLeftPane() {
+    const layout = document.querySelector(".studio-layout");
+    const btn = document.getElementById("toggleLeftPaneBtn");
+    if (!layout) return;
+
+    layout.classList.toggle("left-collapsed");
+    const isCollapsed = layout.classList.contains("left-collapsed");
+
+    if (btn) {
+        btn.innerHTML = isCollapsed ? '<i class="fa-solid fa-chevron-right"></i>' : '<i class="fa-solid fa-chevron-left"></i>';
+        btn.title = isCollapsed ? "Expand Left Panel" : "Collapse Left Panel";
+    }
+
+    setTimeout(() => {
+        if (!userZoomLocked && currentDocumentData && currentDocumentData.pages) {
+            fitImageToViewport(true);
+        }
+    }, 250);
+}
+
 // Enterprise Target-Centric Focus: Smoothly zooms into the selected text box within the zooming area in a bold RED frame
 function scrollToCanvasElement(elemId) {
     if (!currentDocumentData || !currentDocumentData.pages) return;
@@ -1200,15 +1673,20 @@ function scrollToCanvasElement(elemId) {
     const centerX = minX + boxW / 2;
     const centerY = minY + boxH / 2;
 
-    // Calculate base fit scale for full page image inside viewport
-    const availW = wrapper.clientWidth;
-    const availH = wrapper.clientHeight;
+    // Dynamic 50% Viewport Coverage Zoom Engine:
+    // Dynamically scales zoom so the target highlighted field occupies ~50% (half) of the viewport screen
+    const availW = wrapper.clientWidth || 800;
+    const availH = wrapper.clientHeight || 600;
     const fitScale = Math.min(availW / pageW, availH / pageH);
 
-    // Controlled target scale boost strictly limited so image never goes beyond the zoom workspace
-    let targetScale = fitScale * 1.25;
-    const maxAllowedScale = Math.max(fitScale * 1.35, 1.35);
-    targetScale = Math.min(targetScale, maxAllowedScale);
+    const targetWInViewport = availW * 0.50;
+    const targetHInViewport = availH * 0.50;
+
+    const scaleForW = targetWInViewport / boxW;
+    const scaleForH = targetHInViewport / boxH;
+
+    let targetScale = Math.min(scaleForW, scaleForH);
+    targetScale = Math.max(fitScale * 1.1, Math.min(3.5, targetScale));
 
     userZoomLocked = true;
     zoomScale = targetScale;
