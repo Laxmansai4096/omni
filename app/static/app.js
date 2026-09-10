@@ -622,6 +622,7 @@ function renderCanvasPage(page) {
     if (page.image_url) {
         const bgImg = new Image();
         bgImg.onload = function() {
+            currentLoadedBgImg = bgImg;
             ctx.drawImage(bgImg, 0, 0, width, height);
             reapplyCanvasReplacements(page);
             updateReplaceAllButtonUI();
@@ -970,8 +971,265 @@ async function fetchElementTranslation(elem, targetLang) {
     }
 }
 
-// Global Map for active canvas text replacements: { elemId -> { text, renderedText, isTruncated, pageIndex } }
+// Global Maps for active canvas text replacements and in-place image manipulations
 let replacedCanvasTexts = {};
+let editedCanvasImages = {};
+let currentLoadedBgImg = null;
+
+// Draw In-Place Manipulated / Replaced Image on Canvas with Strict Bounding Box Clipping
+function drawEditedImageOnCanvas(elem, editState, baseImg, ctx, canvas) {
+    if (!elem || !elem.bounding_box || !ctx || !canvas) return;
+    const bbox = elem.bounding_box;
+    const cw = canvas.width;
+    const ch = canvas.height;
+
+    const x = bbox.x * cw;
+    const y = bbox.y * ch;
+    const w = Math.max(30, bbox.width * cw);
+    const h = Math.max(30, bbox.height * ch);
+
+    // 1. Wipe original bounding box region
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x, y, w, h);
+
+    if (editState.action === 'deleted') {
+        // Draw elegant deleted placeholder pattern inside exact box
+        ctx.save();
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.7)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
+        
+        ctx.fillStyle = "rgba(239, 68, 68, 0.08)";
+        ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+
+        ctx.fillStyle = "#ef4444";
+        ctx.font = "bold 12px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("✕ Image Removed", x + w / 2, y + h / 2);
+        ctx.restore();
+        return;
+    }
+
+    // 2. Strict Clipping Boundary: Image will NEVER bleed or overlap outside (x, y, w, h)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+
+    const rotation = editState.rotation || 0;
+    const scale = editState.scale || 1.0;
+    const fitMode = editState.fitMode || 'contain';
+
+    ctx.translate(x + w / 2, y + h / 2);
+    if (rotation !== 0) {
+        ctx.rotate((rotation * Math.PI) / 180);
+    }
+    if (scale !== 1.0) {
+        ctx.scale(scale, scale);
+    }
+
+    const customImg = editState.customImgObj;
+    if (customImg && customImg.complete && customImg.naturalWidth > 0) {
+        const nw = customImg.naturalWidth;
+        const nh = customImg.naturalHeight;
+        let drawW = w;
+        let drawH = h;
+
+        if (fitMode === 'contain') {
+            const aspect = nw / nh;
+            const boxAspect = w / h;
+            if (aspect > boxAspect) {
+                drawW = w;
+                drawH = w / aspect;
+            } else {
+                drawH = h;
+                drawW = h * aspect;
+            }
+        } else if (fitMode === 'cover') {
+            const aspect = nw / nh;
+            const boxAspect = w / h;
+            if (aspect > boxAspect) {
+                drawH = h;
+                drawW = h * aspect;
+            } else {
+                drawW = w;
+                drawH = w / aspect;
+            }
+        }
+        ctx.drawImage(customImg, -drawW / 2, -drawH / 2, drawW, drawH);
+    } else if (baseImg && baseImg.complete && baseImg.naturalWidth > 0) {
+        const cropX = bbox.x * baseImg.naturalWidth;
+        const cropY = bbox.y * baseImg.naturalHeight;
+        const cropW = bbox.width * baseImg.naturalWidth;
+        const cropH = bbox.height * baseImg.naturalHeight;
+
+        ctx.drawImage(baseImg, cropX, cropY, cropW, cropH, -w / 2, -h / 2, w, h);
+    }
+
+    ctx.restore();
+
+    // Subtle outline indicator
+    ctx.save();
+    ctx.strokeStyle = "rgba(168, 85, 247, 0.45)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+}
+
+// In-Place Image Manipulation Handlers: Rotate, Scale, Fit, Replace, Delete, Restore
+function rotateImageElement(elemId, angleDelta, event) {
+    if (event) event.stopPropagation();
+    if (!currentDocumentData) return;
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page) return;
+
+    if (!editedCanvasImages[elemId]) {
+        editedCanvasImages[elemId] = {
+            action: 'edit',
+            rotation: 0,
+            scale: 1.0,
+            fitMode: 'contain',
+            customImgSrc: null,
+            customImgObj: null,
+            pageIndex: currentPageIndex
+        };
+    }
+
+    let curRot = editedCanvasImages[elemId].rotation || 0;
+    curRot = (curRot + angleDelta) % 360;
+    if (curRot < 0) curRot += 360;
+    editedCanvasImages[elemId].rotation = curRot;
+    editedCanvasImages[elemId].pageIndex = currentPageIndex;
+
+    renderCanvasPage(page);
+    renderExtractedElementsList();
+    updateReplaceAllButtonUI();
+    selectElement(elemId);
+}
+
+function scaleImageElement(elemId, scaleDelta, event) {
+    if (event) event.stopPropagation();
+    if (!currentDocumentData) return;
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page) return;
+
+    if (!editedCanvasImages[elemId]) {
+        editedCanvasImages[elemId] = {
+            action: 'edit',
+            rotation: 0,
+            scale: 1.0,
+            fitMode: 'contain',
+            customImgSrc: null,
+            customImgObj: null,
+            pageIndex: currentPageIndex
+        };
+    }
+
+    let curScale = editedCanvasImages[elemId].scale || 1.0;
+    curScale = Math.max(0.3, Math.min(3.0, curScale + scaleDelta));
+    editedCanvasImages[elemId].scale = Math.round(curScale * 100) / 100;
+    editedCanvasImages[elemId].pageIndex = currentPageIndex;
+
+    renderCanvasPage(page);
+    renderExtractedElementsList();
+    updateReplaceAllButtonUI();
+    selectElement(elemId);
+}
+
+function toggleFitModeImageElement(elemId, event) {
+    if (event) event.stopPropagation();
+    if (!currentDocumentData) return;
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page) return;
+
+    if (!editedCanvasImages[elemId]) {
+        editedCanvasImages[elemId] = {
+            action: 'edit',
+            rotation: 0,
+            scale: 1.0,
+            fitMode: 'contain',
+            customImgSrc: null,
+            customImgObj: null,
+            pageIndex: currentPageIndex
+        };
+    }
+
+    const curMode = editedCanvasImages[elemId].fitMode || 'contain';
+    editedCanvasImages[elemId].fitMode = (curMode === 'contain') ? 'cover' : 'contain';
+    editedCanvasImages[elemId].pageIndex = currentPageIndex;
+
+    renderCanvasPage(page);
+    renderExtractedElementsList();
+    updateReplaceAllButtonUI();
+    selectElement(elemId);
+}
+
+function handleReplaceImageFile(elemId, file) {
+    if (!file || !currentDocumentData) return;
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const dataUrl = e.target.result;
+        const img = new Image();
+        img.onload = function() {
+            editedCanvasImages[elemId] = {
+                action: 'replace',
+                rotation: 0,
+                scale: 1.0,
+                fitMode: 'contain',
+                customImgSrc: dataUrl,
+                customImgObj: img,
+                pageIndex: currentPageIndex
+            };
+            renderCanvasPage(page);
+            renderExtractedElementsList();
+            updateReplaceAllButtonUI();
+            selectElement(elemId);
+        };
+        img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+}
+
+function deleteImageElement(elemId, event) {
+    if (event) event.stopPropagation();
+    if (!currentDocumentData) return;
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page) return;
+
+    editedCanvasImages[elemId] = {
+        action: 'deleted',
+        rotation: 0,
+        scale: 1.0,
+        fitMode: 'contain',
+        customImgSrc: null,
+        customImgObj: null,
+        pageIndex: currentPageIndex
+    };
+
+    renderCanvasPage(page);
+    renderExtractedElementsList();
+    updateReplaceAllButtonUI();
+    selectElement(elemId);
+}
+
+function restoreOriginalImageElement(elemId, event) {
+    if (event) event.stopPropagation();
+    if (!currentDocumentData) return;
+    const page = currentDocumentData.pages[currentPageIndex];
+    if (!page) return;
+
+    delete editedCanvasImages[elemId];
+
+    renderCanvasPage(page);
+    renderExtractedElementsList();
+    updateReplaceAllButtonUI();
+    selectElement(elemId);
+}
 
 // Replace Text on Canvas with Multi-Line Text Wrapping & Smart ...TBC Truncation
 function replaceTextOnCanvas(elemId, textToReplace, event, triggerZoom = true) {
@@ -983,7 +1241,7 @@ function replaceTextOnCanvas(elemId, textToReplace, event, triggerZoom = true) {
     const elem = (page.elements || []).find(e => e.id === elemId);
     if (!elem || !elem.bounding_box) return;
 
-    // Visual image/figure/chart regions should NEVER be replaced on canvas (they stay as pristine original image)
+    // Visual image/figure/chart regions should NEVER be replaced on canvas with text
     if (elem.category === 'figure' || elem.category === 'image' || elem.category === 'chart') {
         if (triggerZoom !== false) {
             selectElement(elemId);
@@ -1120,7 +1378,7 @@ function replaceTextOnCanvas(elemId, textToReplace, event, triggerZoom = true) {
     }
 }
 
-// Restore an individual bounding box back to pristine original text / image
+// Restore an individual bounding box back to pristine original text
 function restoreOriginalCanvasText(elemId, event) {
     if (event) event.stopPropagation();
     if (!currentDocumentData) return;
@@ -1139,15 +1397,17 @@ function restoreOriginalCanvasText(elemId, event) {
     updateReplaceAllButtonUI();
     updateSvgOverlayHighlights();
     selectElement(elemId);
-}// Re-apply saved canvas replacements after canvas redraws / zoom scale changes
+}
+
+// Re-apply saved canvas replacements & image edits after canvas redraws / zoom scale changes
 function reapplyCanvasReplacements(page) {
     if (!page || !page.elements) return;
     const canvas = document.getElementById("documentCanvas");
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
 
+    // 1. Re-apply text replacements
     page.elements.forEach(elem => {
-        // Visual image/figure/chart regions should NEVER be replaced on canvas
         if (elem.category === 'figure' || elem.category === 'image' || elem.category === 'chart') return;
 
         const item = replacedCanvasTexts[elem.id];
@@ -1186,6 +1446,15 @@ function reapplyCanvasReplacements(page) {
             });
         }
     });
+
+    // 2. Re-apply in-place image manipulations (rotations, scaling, replacements, deletions)
+    page.elements.forEach(elem => {
+        if (elem.category !== 'figure' && elem.category !== 'image' && elem.category !== 'chart') return;
+        const editState = editedCanvasImages[elem.id];
+        if (editState && editState.pageIndex === currentPageIndex) {
+            drawEditedImageOnCanvas(elem, editState, currentLoadedBgImg, ctx, canvas);
+        }
+    });
 }
 
 // Update Replace All Button UI label & style dynamically
@@ -1195,12 +1464,14 @@ function updateReplaceAllButtonUI() {
     const page = currentDocumentData ? currentDocumentData.pages[currentPageIndex] : null;
     if (!page) return;
 
-    const hasAnyReplacement = Object.keys(replacedCanvasTexts).some(k => replacedCanvasTexts[k] && replacedCanvasTexts[k].pageIndex === currentPageIndex);
+    const hasAnyTextReplacement = Object.keys(replacedCanvasTexts).some(k => replacedCanvasTexts[k] && replacedCanvasTexts[k].pageIndex === currentPageIndex);
+    const hasAnyImageEdit = Object.keys(editedCanvasImages).some(k => editedCanvasImages[k] && editedCanvasImages[k].pageIndex === currentPageIndex);
+    const hasAnyModification = hasAnyTextReplacement || hasAnyImageEdit;
 
-    if (hasAnyReplacement) {
+    if (hasAnyModification) {
         btn.innerHTML = `<i class="fa-solid fa-rotate-left"></i> Restore All to Original`;
         btn.classList.add("btn-state-restore");
-        btn.title = "Restore all text boxes back to original image";
+        btn.title = "Restore all text and images back to pristine original document";
     } else {
         btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> Replace All on Canvas`;
         btn.classList.remove("btn-state-restore");
@@ -1213,9 +1484,11 @@ async function toggleAllCanvasReplacements() {
     const page = currentDocumentData ? currentDocumentData.pages[currentPageIndex] : null;
     if (!page || !page.elements) return;
 
-    const hasAnyReplacement = Object.keys(replacedCanvasTexts).some(k => replacedCanvasTexts[k] && replacedCanvasTexts[k].pageIndex === currentPageIndex);
+    const hasAnyTextReplacement = Object.keys(replacedCanvasTexts).some(k => replacedCanvasTexts[k] && replacedCanvasTexts[k].pageIndex === currentPageIndex);
+    const hasAnyImageEdit = Object.keys(editedCanvasImages).some(k => editedCanvasImages[k] && editedCanvasImages[k].pageIndex === currentPageIndex);
+    const hasAnyModification = hasAnyTextReplacement || hasAnyImageEdit;
 
-    if (hasAnyReplacement) {
+    if (hasAnyModification) {
         resetDocumentCanvas();
     } else {
         await replaceAllCanvasTexts();
@@ -1225,6 +1498,7 @@ async function toggleAllCanvasReplacements() {
 // Reset Canvas to pristine original image state
 function resetDocumentCanvas() {
     replacedCanvasTexts = {};
+    editedCanvasImages = {};
     if (currentDocumentData && currentDocumentData.pages) {
         renderCanvasPage(currentDocumentData.pages[currentPageIndex]);
     }
@@ -1243,6 +1517,7 @@ function resetDocumentCanvas() {
         });
     }
 
+    renderExtractedElementsList();
     fitImageToViewport(true);
 }
 
@@ -1547,6 +1822,75 @@ function renderExtractedElementsList() {
             `;
         }
 
+        // Visual Element In-Place Image Editor Toolbar (Rotate, Scale, Fit, Replace, Delete, Restore)
+        let imgEditorHtml = "";
+        if (isVisualElement) {
+            const editState = editedCanvasImages[elem.id];
+            const isImgEdited = !!editState;
+            const curRot = editState ? (editState.rotation || 0) : 0;
+            const curScale = editState ? Math.round((editState.scale || 1.0) * 100) : 100;
+            const curFit = editState ? (editState.fitMode || 'contain') : 'contain';
+            const isDeleted = editState && editState.action === 'deleted';
+            const isCustom = editState && editState.action === 'replace';
+
+            let badges = [];
+            if (isDeleted) {
+                badges.push(`<span class="img-status-badge badge-deleted"><i class="fa-solid fa-ban"></i> Removed from Canvas</span>`);
+            } else if (isImgEdited) {
+                if (isCustom) badges.push(`<span class="img-status-badge badge-replaced"><i class="fa-solid fa-image"></i> Custom Image</span>`);
+                if (curRot !== 0) badges.push(`<span class="img-status-badge badge-rotated"><i class="fa-solid fa-rotate"></i> ${curRot}°</span>`);
+                if (curScale !== 100) badges.push(`<span class="img-status-badge badge-scaled"><i class="fa-solid fa-magnifying-glass"></i> ${curScale}%</span>`);
+                if (curFit === 'cover') badges.push(`<span class="img-status-badge badge-cover"><i class="fa-solid fa-expand"></i> Cover Mode</span>`);
+            }
+
+            const statusBadgeHtml = badges.length > 0 ? `<div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">${badges.join('')}</div>` : '';
+
+            imgEditorHtml = `
+                <div class="img-editor-section" onclick="event.stopPropagation()">
+                    <div class="img-editor-toolbar">
+                        <div class="img-editor-group">
+                            <span class="img-editor-label"><i class="fa-solid fa-rotate"></i> Rotate:</span>
+                            <button class="btn-img-tool" onclick="rotateImageElement('${elem.id}', -90, event)" title="Rotate Left 90°">
+                                <i class="fa-solid fa-arrow-rotate-left"></i> -90°
+                            </button>
+                            <button class="btn-img-tool" onclick="rotateImageElement('${elem.id}', 90, event)" title="Rotate Right 90°">
+                                <i class="fa-solid fa-arrow-rotate-right"></i> +90°
+                            </button>
+                        </div>
+
+                        <div class="img-editor-group">
+                            <span class="img-editor-label"><i class="fa-solid fa-magnifying-glass-plus"></i> Scale:</span>
+                            <button class="btn-img-tool" onclick="scaleImageElement('${elem.id}', -0.15, event)" title="Zoom Out (-15%)">
+                                <i class="fa-solid fa-minus"></i>
+                            </button>
+                            <button class="btn-img-tool" onclick="scaleImageElement('${elem.id}', 0.15, event)" title="Zoom In (+15%)">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                            <button class="btn-img-tool" onclick="toggleFitModeImageElement('${elem.id}', event)" title="Toggle Fit/Cover Mode (${curFit})">
+                                <i class="fa-solid fa-expand"></i> ${curFit === 'cover' ? 'Fit Mode' : 'Cover Mode'}
+                            </button>
+                        </div>
+
+                        <div class="img-editor-group">
+                            <label class="btn-img-tool btn-img-upload" title="Upload new image to replace this figure in-place">
+                                <i class="fa-solid fa-upload"></i> Replace Image
+                                <input type="file" id="replace-img-input-${elem.id}" accept="image/*" style="display:none;" onchange="handleReplaceImageFile('${elem.id}', this.files[0])">
+                            </label>
+                            <button class="btn-img-tool btn-img-delete" onclick="deleteImageElement('${elem.id}', event)" title="Remove image from document canvas">
+                                <i class="fa-solid fa-trash-can"></i> Remove
+                            </button>
+                            ${isImgEdited ? `
+                            <button class="btn-restore-canvas" onclick="restoreOriginalImageElement('${elem.id}', event)" title="Restore original image">
+                                <i class="fa-solid fa-rotate-left"></i> Restore Original
+                            </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    ${statusBadgeHtml}
+                </div>
+            `;
+        }
+
         card.innerHTML = `
             <div class="card-header">
                 <div class="card-title-group" style="display:flex; align-items:center; gap:8px;">
@@ -1562,6 +1906,7 @@ function renderExtractedElementsList() {
                 <div id="card-text-display-${elem.id}">
                     ${detailsHtml}
                 </div>
+                ${imgEditorHtml}
                 <div class="edit-panel" id="edit-panel-${elem.id}" style="display:none;" onclick="event.stopPropagation()">
                     <label style="font-size:0.75rem; font-weight:700; color:#38bdf8; display:block; margin-bottom:4px;"><i class="fa-solid ${editIcon}"></i> ${editLabel}</label>
                     <textarea class="edit-textarea" id="edit-text-${elem.id}">${escapeHtml(textToEdit)}</textarea>
