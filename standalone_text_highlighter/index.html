@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Standalone Bounding Box Text Highlighter & Target Zoom Engine</title>
+    <link rel="stylesheet" href="viewer.css">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="highlighter-app" id="highlighterApp">
+        <!-- Top Navbar -->
+        <header class="highlighter-header">
+            <div class="header-title">
+                <i class="fa-solid fa-vector-square"></i>
+                <span>Document Text Highlighting & Auto-Zoom Engine</span>
+            </div>
+            <div style="font-size: 0.8rem; color: #94a3b8;">
+                <i class="fa-solid fa-circle-info"></i> Click any right card or canvas polygon to highlight & zoom
+            </div>
+        </header>
+
+        <!-- Main Viewport -->
+        <main class="main-viewport">
+            <!-- Left Canvas Area -->
+            <section class="canvas-section">
+                <!-- Toolbar -->
+                <div class="toolbar-bar">
+                    <div class="filter-pills">
+                        <button class="pill-btn active" data-category="all" onclick="highlighter.setCategoryFilter('all')">
+                            <i class="fa-solid fa-layer-group"></i> All
+                        </button>
+                        <button class="pill-btn" data-category="text" onclick="highlighter.setCategoryFilter('text')">
+                            <i class="fa-solid fa-font"></i> Text
+                        </button>
+                        <button class="pill-btn" data-category="table" onclick="highlighter.setCategoryFilter('table')">
+                            <i class="fa-solid fa-table"></i> Table
+                        </button>
+                        <button class="pill-btn" data-category="chart" onclick="highlighter.setCategoryFilter('chart')">
+                            <i class="fa-solid fa-chart-column"></i> Chart
+                        </button>
+                        <button class="pill-btn" data-category="key_value" onclick="highlighter.setCategoryFilter('key_value')">
+                            <i class="fa-solid fa-key"></i> Key-Value
+                        </button>
+                    </div>
+
+                    <div class="zoom-controls">
+                        <button class="zoom-btn" onclick="highlighter.zoomCanvas(-0.15)" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+                        <span class="zoom-badge" id="zoomBadge" onclick="highlighter.fitImageToViewport(true)" title="Reset Zoom">100%</span>
+                        <button class="zoom-btn" onclick="highlighter.zoomCanvas(0.15)" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+                        <button class="zoom-btn" onclick="highlighter.fitImageToViewport(true)"><i class="fa-solid fa-compress"></i> Fit Page</button>
+                    </div>
+                </div>
+
+                <!-- Interactive Canvas Viewport -->
+                <div class="canvas-wrapper" id="canvasWrapper">
+                    <div class="image-stage" id="imageStage">
+                        <canvas id="docCanvas"></canvas>
+                        <svg id="svgOverlay"></svg>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Inspector Cards Panel -->
+            <section class="inspector-section">
+                <div class="inspector-header">
+                    <h3 class="inspector-title"><i class="fa-solid fa-list-check"></i> Extracted Bounding Box Elements</h3>
+                    <p class="inspector-subtitle">Click a card below to highlight in bold RED and auto-zoom the canvas target</p>
+                </div>
+                <div class="cards-container" id="cardsContainer">
+                    <!-- Cards dynamically populated by viewer.js -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="viewer.js"></script>
+    <script>
+        // Instantiate Highlighter Engine
+        const highlighter = new DocumentHighlighter();
+
+        // Load Sample Bounding Box JSON Payload
+        fetch('sample_data.json')
+            .then(res => res.json())
+            .then(data => highlighter.loadDocument(data))
+            .catch(err => console.error('Failed to load sample data:', err));
+    </script>
+</body>
+</html>

@@ -1,0 +1,322 @@
+/* Standalone Document Bounding Box & Highlight Engine Stylesheet */
+:root {
+    --bg-dark: #0b0f19;
+    --bg-card: #141c2e;
+    --bg-border: #1e293b;
+    --primary-blue: #3b82f6;
+    --text-light: #f8fafc;
+    --text-muted: #94a3b8;
+    
+    /* Category Color Tokens */
+    --color-text: #eab308;       /* Yellow */
+    --color-table: #3b82f6;      /* Blue */
+    --color-chart: #10b981;      /* Green */
+    --color-figure: #a855f7;     /* Purple */
+    --color-keyvalue: #f97316;   /* Orange */
+    --color-active: #ef4444;     /* Red (Active Target) */
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--bg-dark);
+    color: var(--text-light);
+    height: 100vh;
+    overflow: hidden;
+}
+
+.highlighter-app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* Navbar */
+.highlighter-header {
+    height: 54px;
+    background: #0f172a;
+    border-bottom: 1px solid var(--bg-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+}
+
+.header-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.header-title i {
+    color: #38bdf8;
+}
+
+/* Split Main Layout */
+.main-viewport {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Left Canvas Area */
+.canvas-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #070a12;
+    border-right: 1px solid var(--bg-border);
+    min-width: 0;
+    position: relative;
+}
+
+/* Toolbar */
+.toolbar-bar {
+    height: 48px;
+    background: #0f172a;
+    border-bottom: 1px solid var(--bg-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    z-index: 10;
+}
+
+.filter-pills {
+    display: flex;
+    gap: 6px;
+}
+
+.pill-btn {
+    background: #1e293b;
+    color: var(--text-muted);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pill-btn:hover, .pill-btn.active {
+    background: #2563eb;
+    color: #ffffff;
+    border-color: #3b82f6;
+}
+
+.zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #1e293b;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--bg-border);
+}
+
+.zoom-btn {
+    background: #334155;
+    color: #f1f5f9;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.zoom-btn:hover {
+    background: #2563eb;
+}
+
+.zoom-badge {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #38bdf8;
+    padding: 2px 8px;
+    font-family: monospace;
+}
+
+/* Canvas Viewport */
+.canvas-wrapper {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: #050811;
+    contain: paint;
+}
+
+.image-stage {
+    position: relative;
+    margin: auto;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    background: #ffffff;
+    flex-shrink: 0;
+}
+
+canvas#docCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+svg#svgOverlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+/* Bounding Box Polygons */
+.bounding-polygon {
+    pointer-events: auto;
+    cursor: pointer;
+    fill-opacity: 0.18;
+    stroke-width: 2.5;
+    transition: all 0.2s ease;
+}
+
+/* Category Colors */
+.poly-text { fill: var(--color-text); stroke: var(--color-text); }
+.poly-table { fill: var(--color-table); stroke: var(--color-table); }
+.poly-chart { fill: var(--color-chart); stroke: var(--color-chart); }
+.poly-figure { fill: var(--color-figure); stroke: var(--color-figure); }
+.poly-key_value { fill: var(--color-keyvalue); stroke: var(--color-keyvalue); }
+
+.bounding-polygon:hover {
+    fill-opacity: 0.45;
+    stroke-width: 3.5;
+    filter: drop-shadow(0 0 8px currentColor);
+}
+
+/* Active Highlight Target */
+.bounding-polygon.active-target {
+    fill: rgba(239, 68, 68, 0.35) !important;
+    stroke: var(--color-active) !important;
+    stroke-width: 4.5 !important;
+    stroke-dasharray: 6 3;
+    animation: dashPulse 1.2s infinite linear;
+    filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.9)) !important;
+}
+
+@keyframes dashPulse {
+    to { stroke-dashoffset: -18; }
+}
+
+.polygon-group.dimmed-cat {
+    opacity: 0.2;
+}
+
+.active-tag-text {
+    font-size: 13px;
+    font-weight: 700;
+    fill: #ffffff;
+    font-family: 'Inter', sans-serif;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.9));
+}
+
+/* Right Inspector Side Panel */
+.inspector-section {
+    width: 420px;
+    background: var(--bg-card);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.inspector-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--bg-border);
+}
+
+.inspector-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #f8fafc;
+    margin-bottom: 4px;
+}
+
+.inspector-subtitle {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.cards-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Inspector Item Cards */
+.element-card {
+    background: #0f172a;
+    border: 1px solid var(--bg-border);
+    border-left: 4px solid var(--text-muted);
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.element-card:hover {
+    border-color: #38bdf8;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Card Selection Highlighting */
+.element-card.active-card {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1.5px solid #ef4444 !important;
+    border-left: 6px solid #ef4444 !important;
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.35);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.card-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+.tag-text { background: rgba(234, 179, 8, 0.2); color: var(--color-text); }
+.tag-table { background: rgba(59, 130, 246, 0.2); color: var(--color-table); }
+.tag-chart { background: rgba(16, 185, 129, 0.2); color: var(--color-chart); }
+.tag-figure { background: rgba(168, 85, 247, 0.2); color: var(--color-figure); }
+.tag-key_value { background: rgba(249, 115, 22, 0.2); color: var(--color-keyvalue); }
+
+.card-body-text {
+    font-size: 0.84rem;
+    color: #cbd5e1;
+    line-height: 1.45;
+    word-break: break-word;
+}

@@ -19,35 +19,36 @@ class AzureDocIntelService:
         self.is_configured = bool(self.endpoint and self.key)
 
     def analyze_document_bytes(self, content_bytes: bytes, file_name: str) -> DocumentAnalysisResult:
-        """Analyzes document bytes using Azure AI Document Intelligence SDK if configured, else returns fallback demo."""
+        """Analyzes document bytes using Azure AI Document Intelligence SDK and Azure OpenAI Vision concurrently in parallel for minimum latency."""
         if not self.is_configured:
             logger.info("Azure Document Intelligence not configured. Using fallback parser.")
             return self._fallback_analysis(file_name)
 
         start_time = time.time()
         
-        # Preprocess image uploads (JPEG, PNG, WEBP, BMP, TIFF)
+        # Preprocess image uploads (JPEG, PNG, WEBP, BMP, TIFF), downscale to max 1280px for high-speed OCR/Vision
         content_bytes, image_url, img_w, img_h = self._preprocess_image(content_bytes, file_name)
 
         try:
             from azure.ai.documentintelligence import DocumentIntelligenceClient
             from azure.core.credentials import AzureKeyCredential
+            from concurrent.futures import ThreadPoolExecutor
 
-            client = DocumentIntelligenceClient(
-                endpoint=self.endpoint, 
-                credential=AzureKeyCredential(self.key)
-            )
+            def run_doc_intel():
+                client = DocumentIntelligenceClient(
+                    endpoint=self.endpoint, 
+                    credential=AzureKeyCredential(self.key)
+                )
+                poller = client.begin_analyze_document(
+                    model_id="prebuilt-layout",
+                    body=content_bytes,
+                    content_type="application/octet-stream"
+                )
+                return poller.result()
 
-            poller = client.begin_analyze_document(
-                model_id="prebuilt-layout",
-                body=content_bytes,
-                content_type="application/octet-stream"
-            )
-            result = poller.result()
-
-            # Execute Azure OpenAI Vision Deep Analysis
-            vision_info = None
-            if image_url and "base64," in image_url:
+            def run_vision_analysis():
+                if not image_url or "base64," not in image_url:
+                    return None
                 try:
                     t_v0 = time.time()
                     b64_str = image_url.split("base64,")[-1]
@@ -55,17 +56,26 @@ class AzureDocIntelService:
                     vision_service = AzureVisionAnalyzer()
                     v_res = vision_service.analyze_chart_image(b64_str)
                     v_res["latency_ms"] = round((time.time() - t_v0) * 1000, 2)
-                    vision_info = v_res
+                    return v_res
                 except Exception as ve:
                     logger.warning(f"Vision analysis execution warning: {ve}")
+                    return None
+
+            # Execute Azure Doc Intel and Azure OpenAI Vision in parallel
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                future_doc = executor.submit(run_doc_intel)
+                future_vision = executor.submit(run_vision_analysis)
+                
+                result = future_doc.result()
+                vision_info = future_vision.result()
 
             return self._parse_azure_result(result, file_name, len(content_bytes), time.time() - start_time, image_url=image_url, vision_info=vision_info)
         except Exception as e:
-            logger.error(f"Error calling Azure AI Document Intelligence: {e}. Falling back to demo mode.")
+            logger.error(f"Error calling Azure AI Document Intelligence / OpenAI Vision: {e}. Falling back to demo mode.")
             return self._fallback_analysis(file_name)
 
     def _preprocess_image(self, content_bytes: bytes, file_name: str):
-        """Preprocesses image uploads (JPEG, PNG, WEBP, BMP, TIFF), fixes EXIF orientation, and generates base64 image data URL."""
+        """Preprocesses image uploads (JPEG, PNG, WEBP, BMP, TIFF), fixes EXIF orientation, resizes to max 1280px, and generates base64 image data URL."""
         try:
             ext = file_name.lower().split(".")[-1] if "." in file_name else ""
             if ext in ["jpg", "jpeg", "png", "webp", "bmp", "tiff", "gif"]:
@@ -76,12 +86,17 @@ class AzureDocIntelService:
                 image = Image.open(io.BytesIO(content_bytes))
                 # Fix EXIF orientation (photos taken with phones/cameras)
                 image = ImageOps.exif_transpose(image)
+
+                # Downscale oversized images to max 1280px bounding box to drastically reduce OCR & Vision LLM latency
+                max_dim = 1280
+                if image.width > max_dim or image.height > max_dim:
+                    image.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
                 
                 buf = io.BytesIO()
                 fmt = "JPEG" if ext in ["jpg", "jpeg"] else "PNG"
                 if image.mode in ("RGBA", "P") and fmt == "JPEG":
                     image = image.convert("RGB")
-                image.save(buf, format=fmt, quality=95)
+                image.save(buf, format=fmt, quality=80)
                 processed_bytes = buf.getvalue()
                 
                 b64_str = base64.b64encode(processed_bytes).decode("utf-8")
@@ -302,10 +317,11 @@ class AzureDocIntelService:
         
         # Populate live vision metrics if available from Azure OpenAI Vision call
         v_usage = vision_info.get("usage", {}) if vision_info else {}
-        vision_ms = vision_info.get("latency_ms", 350.0) if vision_info else 350.0
-        prompt_toks = v_usage.get("prompt_tokens", 1017 if vision_info else 0)
-        comp_toks = v_usage.get("completion_tokens", 800 if vision_info else 0)
+        vision_ms = vision_info.get("latency_ms", 0.0) if vision_info else 0.0
+        prompt_toks = v_usage.get("prompt_tokens", 0)
+        comp_toks = v_usage.get("completion_tokens", 0)
         total_toks = v_usage.get("total_tokens", prompt_toks + comp_toks)
+        vision_status_text = "SUCCESS" if vision_info else "SKIPPED (No Charts Detected)"
 
         store_ms = 12.0
         total_pipeline_ms = round(gateway_ms + doc_intel_ms + vision_ms + store_ms, 2)
@@ -356,7 +372,7 @@ class AzureDocIntelService:
                     endpoint_url=settings.AZURE_OPENAI_ENDPOINT or "https://aiservice-shipment-poc.openai.azure.com/",
                     model_or_resource=settings.AZURE_OPENAI_DEPLOYMENT_NAME or "gpt-5-mini",
                     status_code=200,
-                    status_text="SUCCESS",
+                    status_text=vision_status_text,
                     latency_ms=vision_ms,
                     prompt_tokens=prompt_toks,
                     completion_tokens=comp_toks,

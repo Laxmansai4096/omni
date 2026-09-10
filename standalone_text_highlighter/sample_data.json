@@ -1,0 +1,94 @@
+{
+  "document_id": "sample-demo-001",
+  "file_name": "sample_invoice.png",
+  "pages": [
+    {
+      "page_number": 1,
+      "width": 1000,
+      "height": 1300,
+      "image_url": "https://raw.githubusercontent.com/Laxmansai4096/omni/main/app/static/samples/multimodal_test_sample.jpg",
+      "elements": [
+        {
+          "id": "elem-header-01",
+          "category": "text",
+          "label": "Header Title",
+          "text_content": "ENTERPRISE INVOICE & EXPENSE REPORT",
+          "bounding_box": {
+            "x": 0.05,
+            "y": 0.04,
+            "width": 0.90,
+            "height": 0.05,
+            "polygon": [0.05, 0.04, 0.95, 0.04, 0.95, 0.09, 0.05, 0.09]
+          }
+        },
+        {
+          "id": "elem-kv-01",
+          "category": "key_value",
+          "label": "Vendor Key-Value",
+          "text_content": "Invoice #: INV-2026-8902\nVendor: Contoso Cloud Services\nTotal Amount: $4,850.00\nPayment Status: Paid",
+          "key_value_pair": {
+            "Invoice #": "INV-2026-8902",
+            "Vendor": "Contoso Cloud Services",
+            "Total Amount": "$4,850.00",
+            "Payment Status": "Paid"
+          },
+          "bounding_box": {
+            "x": 0.05,
+            "y": 0.12,
+            "width": 0.42,
+            "height": 0.18,
+            "polygon": [0.05, 0.12, 0.47, 0.12, 0.47, 0.30, 0.05, 0.30]
+          }
+        },
+        {
+          "id": "elem-chart-01",
+          "category": "chart",
+          "label": "Quarterly Revenue Chart",
+          "text_content": "Q1-Q4 Cloud Spend Distribution (Bar Chart)",
+          "chart_summary": {
+            "title": "Quarterly Cloud Expenditure",
+            "note": "Peak spend occurred in Q3 during multi-region migration."
+          },
+          "bounding_box": {
+            "x": 0.52,
+            "y": 0.12,
+            "width": 0.43,
+            "height": 0.30,
+            "polygon": [0.52, 0.12, 0.95, 0.12, 0.95, 0.42, 0.52, 0.42]
+          }
+        },
+        {
+          "id": "elem-table-01",
+          "category": "table",
+          "label": "Itemized Services Table",
+          "text_content": "| Service | Description | Hours | Rate | Total |\n|---|---|---|---|---|\n| Azure VM | Standard D4s v5 | 720 | $0.19 | $136.80 |\n| Cognitive OCR | Document Intel | 1500 | $0.05 | $75.00 |\n| OpenAI Vision | GPT-5-mini API | 850 | $0.02 | $17.00 |",
+          "table_data": {
+            "markdown_table": "| Service | Description | Hours | Rate | Total |\n|---|---|---|---|---|\n| Azure VM | Standard D4s v5 | 720 | $0.19 | $136.80 |\n| Cognitive OCR | Document Intel | 1500 | $0.05 | $75.00 |\n| OpenAI Vision | GPT-5-mini API | 850 | $0.02 | $17.00 |",
+            "row_count": 4,
+            "column_count": 5
+          },
+          "bounding_box": {
+            "x": 0.05,
+            "y": 0.45,
+            "width": 0.90,
+            "height": 0.32,
+            "polygon": [0.05, 0.45, 0.95, 0.45, 0.95, 0.77, 0.05, 0.77]
+          }
+        },
+        {
+          "id": "elem-footer-01",
+          "category": "figure",
+          "label": "Approval Signature Diagram",
+          "text_content": "Authorized Signature & Corporate Seal Region",
+          "bounding_box": {
+            "x": 0.05,
+            "y": 0.82,
+            "width": 0.90,
+            "height": 0.14,
+            "polygon": [0.05, 0.82, 0.95, 0.82, 0.95, 0.96, 0.05, 0.96]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -35,17 +35,17 @@ class AzureVisionAnalyzer:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert financial chart and technical diagram analyst. Convert visual graphs, charts, and diagrams into structured JSON with chart_type, title, metrics dict, markdown_table, and key insights."
+                        "content": "You are a concise document and chart analyst. Extract key metrics, visual trends, and chart insights from the image in brief JSON format (chart_type, title, metrics, insights)."
                     },
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "Analyze this chart/graph image in detail and extract all quantitative values into JSON format."},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
+                            {"type": "text", "text": "Analyze visual elements/charts in this image into concise JSON format."},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}", "detail": "low"}}
                         ]
                     }
                 ],
-                max_completion_tokens=800
+                max_completion_tokens=350
             )
             usage = getattr(response, "usage", None)
             usage_dict = {
